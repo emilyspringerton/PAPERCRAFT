@@ -95,3 +95,20 @@ cc_test(
     srcs = ["slide_jump_mod_test.c"],
     deps = [":slide_jump"],
 )
+
+# xp_award -- the real, PARENA-compiled reward for a real "destroyed a world object" event,
+# PAPERCRAFT's own first real worked mod-authoring example (see PAPERCRAFT/MODDING.md). Ported
+# from the real construct's own progression_tick (SHANKPIT_CONSTRUCT.txt line 860, `delta * 60`
+# XP per real kill).
+cc_library(
+    name = "xp_award",
+    srcs = ["xp_award_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "xp_award_mod_test",
+    srcs = ["xp_award_mod_test.c"],
+    deps = [":xp_award"],
+)

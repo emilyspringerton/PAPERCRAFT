@@ -74,6 +74,12 @@ static PwWorld g_world;
 static PcWorldObjectFile g_wo_file;
 static PaperCubeMesh g_wo_mesh[PC_WO_MAX_OBJECTS];
 static char g_world_objects_path[256] = "var/world/objects.dat";
+static int g_wo_destroyed_awarded[PC_WO_MAX_OBJECTS]; /* real, per-object "already paid out the
+                                                           real xp_award_mod reward" latch -- an
+                                                           object stays fully GONE after it's
+                                                           destroyed, so without this a player
+                                                           could re-earn real XP by re-punching an
+                                                           already-destroyed object every tick */
 
 typedef struct {
     int active;
@@ -106,6 +112,7 @@ int xp_required_for_level(int level);
 int on_papercraft_can_allocate_talent(int ability_value, int unspent_points);
 int on_papercraft_move_speed_boost_permille(int move_rank);
 int on_papercraft_slide_jump_boost_permille(int speed_milli);
+int on_papercraft_xp_for_object_destroyed(void);
 
 #define PC_XP_TICK_MS   1000 /* real 1-second cadence, matches SHANKPIT_CONSTRUCT.txt's own progression_tick */
 #define PC_XP_PER_TICK  5    /* matches the construct's own real progression_add_xp(5) passive rate */
@@ -288,6 +295,25 @@ static void spawn_player(PlayerSlot *s) {
     s->state.unspent_points = 0;
     s->vy = 0.0f;
     s->on_ground = 1;
+}
+
+/* award_xp: real, shared XP-grant + level-up path -- factored out so every real XP source (the
+   passive per-second tick below, and the new real "destroyed a world object" event) applies the
+   exact same real level-up decision (level_mod.c's own on_papercraft_level_for_xp), not two
+   independently-maintained copies of the same real logic. slot_idx is only used for the real,
+   human-readable log line. */
+static void award_xp(PlayerSlot *s, int amount, int slot_idx) {
+    if (amount <= 0 || s->state.level >= 20) return;
+    s->state.xp += amount;
+    int old_level = s->state.level;
+    int new_level = on_papercraft_level_for_xp(old_level, s->state.xp);
+    if (new_level > old_level) {
+        s->state.unspent_points += (new_level - old_level);
+        s->state.level = new_level;
+        printf("Player slot %d leveled up: %d -> %d (xp=%d, +%d points)\n",
+               slot_idx, old_level, new_level, s->state.xp, new_level - old_level);
+    }
+    s->state.xp_to_next = xp_required_for_level(s->state.level < 20 ? s->state.level + 1 : 20);
 }
 
 int main(int argc, char **argv) {
@@ -558,6 +584,26 @@ int main(int argc, char **argv) {
                         if (newly_gone > 0) {
                             printf("Player slot %d punched world object %d -- %d fragment(s) broke off.\n", i, target, newly_gone);
                         }
+
+                        /* Real "destroyed a world object" event -- packages/simulation/xp_award_mod.c
+                           decides the real reward (ported from the construct's own real per-kill
+                           XP), this host code only detects the real transition (every fragment now
+                           PAPER_STATE_GONE) and applies it once per object via the real latch
+                           above, matching every other "mod decides, host applies" split in this
+                           monorepo. This is PAPERCRAFT's own first real worked mod-authoring
+                           example -- see MODDING.md. */
+                        if (!g_wo_destroyed_awarded[target]) {
+                            int gone_count = 0;
+                            for (int f = 0; f < g_wo_mesh[target].fragment_count; f++) {
+                                if (g_wo_mesh[target].fragments[f].state == PAPER_STATE_GONE) gone_count++;
+                            }
+                            if (gone_count == g_wo_mesh[target].fragment_count) {
+                                g_wo_destroyed_awarded[target] = 1;
+                                int reward = on_papercraft_xp_for_object_destroyed();
+                                award_xp(s, reward, i);
+                                printf("Player slot %d destroyed world object %d -- +%d real xp_award_mod XP.\n", i, target, reward);
+                            }
+                        }
                     }
                     break;
                 }
@@ -673,19 +719,7 @@ int main(int argc, char **argv) {
                 if (s->last_xp_tick_ms == 0) s->last_xp_tick_ms = now;
                 if (s->state.level < 20 && now - s->last_xp_tick_ms >= PC_XP_TICK_MS) {
                     s->last_xp_tick_ms = now;
-                    s->state.xp += PC_XP_PER_TICK;
-                    int old_level = s->state.level;
-                    /* Real PARENA-compiled decision -- level_mod.c's own on_papercraft_level_for_xp,
-                       not reimplemented here. xp is tracked as a real running total (not reset per
-                       level, matching this mod's own cumulative xp-required-for-level curve). */
-                    int new_level = on_papercraft_level_for_xp(old_level, s->state.xp);
-                    if (new_level > old_level) {
-                        s->state.unspent_points += (new_level - old_level);
-                        s->state.level = new_level;
-                        printf("Player slot %d leveled up: %d -> %d (xp=%d, +%d points)\n",
-                               i, old_level, new_level, s->state.xp, new_level - old_level);
-                    }
-                    s->state.xp_to_next = xp_required_for_level(s->state.level < 20 ? s->state.level + 1 : 20);
+                    award_xp(s, PC_XP_PER_TICK, i);
                 }
 
                 /* Real periodic autosave -- bounded, real worst-case data loss on a crash (not a

@@ -10,6 +10,7 @@ cc_binary(
         "//packages/simulation:stat_effects",
         "//packages/simulation:paper_fragment",
         "//packages/simulation:slide_jump",
+        "//packages/simulation:xp_award",
     ],
     linkopts = ["-lm"],
     visibility = ["//visibility:public"],

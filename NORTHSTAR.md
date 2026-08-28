@@ -260,6 +260,18 @@ layer. A real, significant, multi-repo undertaking (PARENA's own editor is real 
 independently — `PARENA/docs/NORTHSTAR_LINNEN.md`, `JEWEL`'s own Jupyter-kernel embedding
 precedent) — named here as the real direction, not scoped into a build plan yet.
 
+**The real, underlying source-level pipeline this quote describes is real and verified today
+(2026-08-28) — see `MODDING.md`.** Write a real `.prn` mod, `parena build` it, wire it into the
+host (three small real edits, `MODDING.md` walks through exactly which), `bazel build`, run the
+server on your own machine, connect a real client — every step verified live with a brand-new
+mod (`xp_award_mod`, a real "destroy a world object, earn real bonus XP" reward, ported from the
+construct's own real per-kill XP value) written specifically to prove the doc, not reusing an
+existing mod. What's still real, later work is everything `MODDING.md`'s own "What's honestly not
+here yet" section names: no dynamic loading (every mod needs a host rebuild), no embedded in-game
+PARENA editor (a modder needs a second repo and its own CLI, not a menu inside PAPERCRAFT
+itself), no live-server reload. The *pipeline* is real; the *embedded, no-rebuild, in-game*
+version of it named above is the real, remaining gap.
+
 ## Real Phase 0 — "a player can log in and spawn in the real persistent city, nothing else"
 
 **Server-side Phase 0 shipped and verified (2026-08-28).** `apps/server` is real and live-tested:
