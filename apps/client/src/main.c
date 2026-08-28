@@ -316,6 +316,18 @@ static void draw_progression_hud(int win_w, int win_h, const PcPlayerState *own)
     snprintf(line, sizeof(line), "LVL %d  XP %d/%d  PTS %d", own->level, own->xp, own->xp_to_next, own->unspent_points);
     glColor3f(0.95f, 0.95f, 0.6f);
     pc_draw_string(line, 20.0f, (float)win_h - 30.0f, 9);
+
+    /* Real ability ranks -- keys 1-5 spend a real unspent point on each, matching PC_ABILITY_*'s
+       own real order. Only shown when there's a real point to spend -- an empty prompt for a
+       player with nothing to allocate would just be noise. */
+    if (own->unspent_points > 0) {
+        char abil[96];
+        snprintf(abil, sizeof(abil), "[1]MOVE %d [2]VIT %d [3]HANDLE %d [4]SHIELD %d [5]STORM %d",
+                 own->ability[PC_ABILITY_MOVE], own->ability[PC_ABILITY_VITALITY],
+                 own->ability[PC_ABILITY_HANDLING], own->ability[PC_ABILITY_SHIELD], own->ability[PC_ABILITY_STORM]);
+        glColor3f(0.6f, 0.9f, 0.7f);
+        pc_draw_string(abil, 20.0f, (float)win_h - 55.0f, 6);
+    }
 }
 
 static void draw_player_marker(float x, float y, float z, float yaw, int is_own) {
@@ -446,11 +458,32 @@ int main(int argc, char **argv) {
 
     int running = 1;
     unsigned int win_logged = 0;
+    unsigned int allocate_seq = 0;
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) running = 0;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) running = 0;
+            /* Real talent-point spend request -- keys 1-5, matching PC_ABILITY_MOVE..STORM's own
+               real order (papercraft_protocol.h). Sent once per real keypress (SDL_KEYDOWN, not
+               a held-key poll like WASD below) -- unlike movement, spending a point isn't a
+               continuous input. The server's own real PARENA-compiled gate decides whether it's
+               actually legal; this just sends the real request. */
+            if (welcomed && e.type == SDL_KEYDOWN && !e.key.repeat) {
+                int ability_idx = -1;
+                if (e.key.keysym.sym == SDLK_1) ability_idx = PC_ABILITY_MOVE;
+                else if (e.key.keysym.sym == SDLK_2) ability_idx = PC_ABILITY_VITALITY;
+                else if (e.key.keysym.sym == SDLK_3) ability_idx = PC_ABILITY_HANDLING;
+                else if (e.key.keysym.sym == SDLK_4) ability_idx = PC_ABILITY_SHIELD;
+                else if (e.key.keysym.sym == SDLK_5) ability_idx = PC_ABILITY_STORM;
+                if (ability_idx >= 0) {
+                    PcAllocateTalentPacket req; memset(&req, 0, sizeof(req));
+                    req.hdr.type = PC_PACKET_ALLOCATE_TALENT;
+                    req.hdr.sequence = ++allocate_seq;
+                    req.ability_index = (unsigned char)ability_idx;
+                    sendto(sock, &req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+                }
+            }
         }
 
         unsigned int now = now_ms();

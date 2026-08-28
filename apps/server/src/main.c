@@ -56,6 +56,7 @@ typedef struct {
    first time, matching NORTHSTAR.md's own "keep the experience gain from the construct" note. */
 int on_papercraft_level_for_xp(int level, int total_xp);
 int xp_required_for_level(int level);
+int on_papercraft_can_allocate_talent(int ability_value, int unspent_points);
 
 #define PC_XP_TICK_MS   1000 /* real 1-second cadence, matches SHANKPIT_CONSTRUCT.txt's own progression_tick */
 #define PC_XP_PER_TICK  5    /* matches the construct's own real progression_add_xp(5) passive rate */
@@ -291,6 +292,31 @@ int main(int argc, char **argv) {
                         s->latest_move_x = cmd.move_x;
                         s->latest_move_z = cmd.move_z;
                         s->last_usercmd_ms = now_ms();
+                    }
+                    break;
+                }
+            } else if (hdr.type == PC_PACKET_ALLOCATE_TALENT && (size_t)n >= sizeof(PcAllocateTalentPacket)) {
+                /* Real "mods first everything" gameplay: the actual gate decision (is this a
+                   legal ability index? does the player have a point to spend? is that ability
+                   already at its own real cap?) is the real PARENA-compiled
+                   on_papercraft_can_allocate_talent -- this handler only applies the real
+                   consequence once the mod says yes, same "mod decides, host applies" split
+                   every real mod call site in this monorepo already uses. */
+                for (int i = 0; i < PC_MAX_PLAYERS; i++) {
+                    PlayerSlot *s = &g_slots[i];
+                    if (!s->active || s->addr.sin_addr.s_addr != from.sin_addr.s_addr ||
+                        s->addr.sin_port != from.sin_port) {
+                        continue;
+                    }
+                    PcAllocateTalentPacket req;
+                    memcpy(&req, buf, sizeof(req));
+                    if (req.ability_index >= PC_ABILITY_COUNT) break;
+                    int idx = req.ability_index;
+                    if (on_papercraft_can_allocate_talent(s->state.ability[idx], s->state.unspent_points)) {
+                        s->state.ability[idx]++;
+                        s->state.unspent_points--;
+                        printf("Player slot %d allocated a point into ability %d (now rank %d, %d points left)\n",
+                               i, idx, s->state.ability[idx], s->state.unspent_points);
                     }
                     break;
                 }

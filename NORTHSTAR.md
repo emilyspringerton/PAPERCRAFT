@@ -284,6 +284,23 @@ size 540 bytes) — the compiler's own `-Warray-bounds` caught it before it ship
 now size themselves off `sizeof(PcSnapshotPacket)` directly so this class of bug can't silently
 recur as the protocol keeps growing.
 
+**Real talent spending wired in too (2026-08-28, founder: "make sure to tie parena mods deep in
+as we go").** `talent_mod.c` had the exact same real-but-unused gap `level_mod.c` did until this
+same day — now closed: a new `PC_PACKET_ALLOCATE_TALENT` packet (client, real keys 1-5, one real
+request per keypress, matching `PC_ABILITY_MOVE`..`STORM`'s own real construct order) reaches
+`apps/server`, which calls the real PARENA-compiled `on_papercraft_can_allocate_talent` to decide
+whether the spend is legal (real point available, target ability not already at its own real cap
+of 5) before applying the real consequence (`ability[idx]++`, `unspent_points--`) — same "mod
+decides, host applies" split every real mod call site in this monorepo already uses.
+`PcPlayerState` gained a real `ability[PC_ABILITY_COUNT]` array, broadcast every snapshot;
+`apps/client` shows a real `[1]MOVE n [2]VIT n [3]HANDLE n [4]SHIELD n [5]STORM n` readout
+whenever there's a real point to spend. Verified live end-to-end with a real UDP probe: waited
+for a real level-up to grant a point, sent a real allocation request, confirmed the real server
+applied it (`ability[MOVE]` 0→1, `unspent_points` 1→0). The real per-stat gameplay *effects*
+(`progression_apply_bonuses`'s own move-speed boost, passive health/shield regen, cooldown
+reduction) are still real, later work — this wires the real *spending* decision, not the real
+stat consequences yet.
+
 Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
 Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed
 infrastructure finding, not a guess:

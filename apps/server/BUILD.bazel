@@ -6,6 +6,7 @@ cc_binary(
     deps = [
         "//packages/common:common_headers",
         "//packages/simulation:level",
+        "//packages/simulation:talent",
     ],
     linkopts = ["-lm"],
     visibility = ["//visibility:public"],

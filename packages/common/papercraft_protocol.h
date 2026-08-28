@@ -15,11 +15,12 @@
  * client goes straight from a minted ticket to CONNECT, no queue step in between.
  */
 
-#define PC_PACKET_CONNECT  0
-#define PC_PACKET_WELCOME  1
-#define PC_PACKET_USERCMD  2
-#define PC_PACKET_SNAPSHOT 3
-#define PC_PACKET_REJECT   4
+#define PC_PACKET_CONNECT          0
+#define PC_PACKET_WELCOME          1
+#define PC_PACKET_USERCMD          2
+#define PC_PACKET_SNAPSHOT         3
+#define PC_PACKET_REJECT           4
+#define PC_PACKET_ALLOCATE_TALENT  5
 
 /* Connect-ticket auth -- direct port of racer_protocol.h's own RC_TICKET_* wire format. Minted
  * by IDUNA's PapercraftTicketHandler (internal/http/handlers/papercraft_ticket.go) from a real
@@ -67,6 +68,29 @@ typedef struct {
 
 #define PC_BTN_JUMP 1
 
+/* PcAllocateTalentPacket -- real client request to spend one unspent point on one of the real
+ * five construct stats (PC_ABILITY_* below). The real DECISION (is this legal right now?) is
+ * PARENA's own, not this struct's -- see apps/server/src/main.c's own real call into
+ * on_papercraft_can_allocate_talent (packages/simulation/talent_mod.c) for the actual gate.
+ * Sent once per keypress client-side, not every tick -- unlike PcUserCmdPacket, this isn't a
+ * continuous-input stream. */
+typedef struct {
+    PcHeader hdr;
+    unsigned char ability_index; /* 0..PC_ABILITY_COUNT-1 */
+} PcAllocateTalentPacket;
+
+/* PC_ABILITY_*: real construct stat slots, SHANKPIT_CONSTRUCT.txt's own MatchProgression.ability[5]
+ * (progression_apply_bonuses, construct lines 819-846) -- move speed, passive health regen,
+ * attack-cooldown reduction, passive shield regen, ability-cooldown reduction. Kept in this exact
+ * real order so a future real port of progression_apply_bonuses' own per-stat effects lines up
+ * with the construct's own array indices, not a renumbering. */
+#define PC_ABILITY_MOVE     0
+#define PC_ABILITY_VITALITY 1
+#define PC_ABILITY_HANDLING 2
+#define PC_ABILITY_SHIELD   3
+#define PC_ABILITY_STORM    4
+#define PC_ABILITY_COUNT    5
+
 /* Real RPG progression fields (2026-08-28, wiring the already-tested level_mod.c/talent_mod.c
  * into the actual live game loop for the first time -- "keep the experience gain from the
  * construct i like the idea of papercraft having a leveling system"). Mirrors
@@ -82,6 +106,7 @@ typedef struct {
     int xp;
     int xp_to_next;
     int unspent_points;
+    int ability[PC_ABILITY_COUNT]; /* real construct talent ranks -- see PC_ABILITY_* above */
 } PcPlayerState;
 
 /* PC_MAX_PLAYERS -- real, bounded slot count for Phase 0. Not derived from any real capacity
