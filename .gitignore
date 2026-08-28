@@ -1,0 +1,4 @@
+bin/
+var/
+bazel-*
+MODULE.bazel.lock

@@ -1,0 +1,16 @@
+"""PAPERCRAFT — single-node persistent, online-only sandbox RPG, under Bazel from day one.
+
+Founder real-time (2026-08-28, same session this repo was created): "make sure the whole thing
+is built with bazel" (said of WEAKNIGHT_BEDROCK_RACERS, applied here as the same standing
+convention for any new repo in this monorepo). Same real precedent PARENA/ECOWAR/
+WEAKNIGHT_BEDROCK_RACERS' own MODULE.bazel/BUILD.bazel setup already establishes.
+
+No external dependencies beyond rules_cc.
+"""
+
+module(
+    name = "papercraft",
+    version = "0.0.0",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.17")

@@ -1,0 +1,19 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+# level -- the real, PARENA-compiled RPG level-for-XP decision logic (this repo's own first real
+# "mods first everything" slice, matching NORTHSTAR.md's own citation of
+# WEAKNIGHT_BEDROCK_RACERS' racer/bike-gear-mod.prn as the pattern to follow). level_mod.c is
+# GENERATED (`parena build stdlib/papercraft/level_mod.prn`, PARENA repo) and committed here per
+# this monorepo's own "generated code committed" precedent -- not regenerated at build time.
+cc_library(
+    name = "level",
+    srcs = ["level_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "level_mod_test",
+    srcs = ["level_mod_test.c"],
+    deps = [":level"],
+)

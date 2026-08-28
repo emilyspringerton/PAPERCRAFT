@@ -1,0 +1,8 @@
+# PAPERCRAFT's Bazel config. Same global-flags-not-per-target shape PARENA/ECOWAR/
+# WEAKNIGHT_BEDROCK_RACERS' own .bazelrc already establish -- every cc_library/cc_binary gets the
+# same discipline, without repeating it in every BUILD.bazel file.
+build --conlyopt=-std=c99
+build --copt=-D_DEFAULT_SOURCE
+build --copt=-O2
+build --copt=-Wall
+build --copt=-Wextra
