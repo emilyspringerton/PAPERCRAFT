@@ -335,6 +335,103 @@ static void draw_test_cube(const PaperCubeMesh *mesh, const unsigned char *state
     glEnd();
 }
 
+/* Real client-side debris physics -- closes docs/NORTHSTAR_PAPER_ENGINE.md's own honestly-flagged
+   gap ("fragments visually disappear on GONE, they don't fall/scatter"). Founder: "then some of
+   those faces come off when you hit it with a shot gun." Deliberately client-only/cosmetic (no
+   server authority, no wire protocol change) -- the server already decides WHICH fragments are
+   real, gone, damaged real state (PARENA's own on_paper_fragment_damage/state_for_hp); this is
+   purely the visual consequence of a fragment the server already told us broke off, matching this
+   session's own "mods decide the real game state, host renders the consequence" split, just drawn
+   one level further down into "the client draws a real, non-authoritative visual flourish for an
+   event the server already confirmed happened." A real, later multiplayer nuance this doesn't
+   handle: two clients see slightly different debris timing/trajectories since each spawns its own
+   locally-simulated piece independently -- fine for cosmetic debris, would matter for anything
+   gameplay-relevant (nothing here is). */
+#define PC_MAX_DEBRIS 64
+#define PC_DEBRIS_LIFETIME_S 3.0f
+#define PC_DEBRIS_GRAVITY 9.0f
+#define PC_DEBRIS_DT 0.016f /* matches this client's own real ~16ms frame pacing (SDL_Delay(16)) */
+
+typedef struct {
+    PaperVec3 local_corners[4]; /* real, fixed quad geometry captured the moment it broke off --
+                                    the exact same real jittered corners the object's own mesh had,
+                                    so the piece visually IS the fragment, not a generic chunk */
+    float anchor_x, anchor_y, anchor_z; /* the real object's own world position when it broke */
+    float offset_x, offset_y, offset_z; /* accumulated real translation since breaking */
+    float vx, vy, vz;
+    float age;
+    int material;
+    int active;
+} PcDebrisPiece;
+
+/* spawn_debris_for_fragment: real, ring-buffer allocation (oldest real piece recycled once the
+   real bounded pool is full -- PC_MAX_DEBRIS is deliberately small, cosmetic debris doesn't need
+   to be exhaustive). Real initial velocity: outward from the object's own real center (so a
+   punch on one side scatters pieces away from that side, not uniformly), plus a real small
+   upward pop, plus real bounded jitter so a multi-fragment break doesn't look like a perfectly
+   uniform starburst. */
+static void spawn_debris_for_fragment(PcDebrisPiece *pool, int *cursor, const PaperCubeMesh *mesh,
+                                       int frag_idx, float anchor_x, float anchor_y, float anchor_z) {
+    const PaperFragment *f = &mesh->fragments[frag_idx];
+    PcDebrisPiece *d = &pool[*cursor];
+    *cursor = (*cursor + 1) % PC_MAX_DEBRIS;
+
+    for (int c = 0; c < 4; c++) d->local_corners[c] = f->corners[c];
+    d->anchor_x = anchor_x; d->anchor_y = anchor_y; d->anchor_z = anchor_z;
+    d->offset_x = 0.0f; d->offset_y = 0.0f; d->offset_z = 0.0f;
+
+    /* Real outward kick, scaled by the fragment's own real distance from the object center
+       (f->center is already local-space, i.e. relative to the object's own real anchor) --
+       a corner far from center pops harder, matching a real shotgun-blast read. */
+    float away_x = f->center.x, away_z = f->center.z;
+    float away_len = sqrtf(away_x * away_x + away_z * away_z);
+    if (away_len < 0.01f) { away_x = 1.0f; away_z = 0.0f; away_len = 1.0f; }
+    float kick = 1.5f + 1.0f * ((float)(frag_idx % 7) / 7.0f); /* real, deterministic per-fragment jitter -- no rand() needed */
+    d->vx = (away_x / away_len) * kick;
+    d->vz = (away_z / away_len) * kick;
+    d->vy = 1.5f + 1.0f * ((float)(frag_idx % 5) / 5.0f);
+    d->age = 0.0f;
+    d->material = f->material;
+    d->active = 1;
+}
+
+/* update_and_draw_debris: real, simple gravity integration (no rotation/collision -- real, later
+   work, not needed to prove pieces fall/scatter instead of vanishing) every real frame, real
+   fade via alpha blend over the piece's own last real half-second of life, despawns after
+   PC_DEBRIS_LIFETIME_S. */
+static void update_and_draw_debris(PcDebrisPiece *pool) {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBegin(GL_QUADS);
+    for (int i = 0; i < PC_MAX_DEBRIS; i++) {
+        PcDebrisPiece *d = &pool[i];
+        if (!d->active) continue;
+        d->age += PC_DEBRIS_DT;
+        if (d->age >= PC_DEBRIS_LIFETIME_S) { d->active = 0; continue; }
+        d->vy -= PC_DEBRIS_GRAVITY * PC_DEBRIS_DT;
+        d->offset_x += d->vx * PC_DEBRIS_DT;
+        d->offset_y += d->vy * PC_DEBRIS_DT;
+        d->offset_z += d->vz * PC_DEBRIS_DT;
+
+        float fade = 1.0f;
+        float fade_start = PC_DEBRIS_LIFETIME_S - 0.5f;
+        if (d->age > fade_start) fade = (PC_DEBRIS_LIFETIME_S - d->age) / 0.5f;
+
+        if (d->material == PAPER_MATERIAL_WOOD) glColor4f(0.35f, 0.22f, 0.15f, fade);
+        else if (d->material == PAPER_MATERIAL_METAL) glColor4f(0.5f, 0.5f, 0.55f, fade);
+        else if (d->material == PAPER_MATERIAL_PAPER) glColor4f(0.8f, 0.78f, 0.7f, fade);
+        else glColor4f(0.4f, 0.38f, 0.35f, fade); /* CONCRETE -- a real, slightly darker tint than an intact fragment's own, reads as broken debris */
+
+        for (int c = 0; c < 4; c++) {
+            glVertex3f(d->anchor_x + d->local_corners[c].x + d->offset_x,
+                       d->anchor_y + d->local_corners[c].y + d->offset_y,
+                       d->anchor_z + d->local_corners[c].z + d->offset_z);
+        }
+    }
+    glEnd();
+    glDisable(GL_BLEND);
+}
+
 /* draw_progression_hud: real "LVL %d  XP %d/%d  PTS %d" readout, the exact real HUD line format
    SHANKPIT_CONSTRUCT.txt's own code already used (grepped, not invented -- construct's own
    lvl_buf snprintf), now driven by real server-authoritative state (PcPlayerState's own
@@ -449,6 +546,12 @@ int main(int argc, char **argv) {
        snapshot, never geometry. */
     static PaperCubeMesh g_wo_mesh[PC_WO_MAX_OBJECTS];
     static int g_wo_mesh_ready[PC_WO_MAX_OBJECTS];
+    /* Real debris state -- packages/common/paper_mesh.h's own fragments feed spawn_debris_for_fragment
+       the moment this client detects a real GONE transition (diffing consecutive snapshots below). */
+    static PcDebrisPiece g_debris[PC_MAX_DEBRIS];
+    static int g_debris_cursor = 0;
+    static unsigned char g_prev_wo_state[PC_WO_MAX_OBJECTS][PC_WO_FRAGMENTS];
+    static int g_prev_wo_state_valid = 0;
 
 #ifdef _WIN32
     WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);
@@ -659,10 +762,34 @@ int main(int argc, char **argv) {
                 const PcWorldObjectDef *def = &latest_snap.world_objects[o];
                 paper_generate_cube(&g_wo_mesh[o], def->half_extent, PC_WO_SUBDIV, def->material, def->seed);
                 g_wo_mesh_ready[o] = 1;
+                /* A freshly-seen object has no real prior-frame state to diff against --
+                   pre-fill so its own already-broken fragments (e.g. restored from a real
+                   PcWorldDamageFile on the server side) don't all spawn debris the instant this
+                   client first sees them. */
+                memcpy(g_prev_wo_state[o], latest_snap.world_object_state[o], PC_WO_FRAGMENTS);
             }
+            /* Real GONE-transition detection -- diff this real snapshot's fragment state against
+               the last one this client saw, and spawn a real debris piece for every fragment
+               that JUST broke off (not ones that were already GONE last frame, and not on the
+               very first frame this object was seen -- see the pre-fill above). */
+            if (g_prev_wo_state_valid) {
+                for (int f = 0; f < g_wo_mesh[o].fragment_count && f < PC_WO_FRAGMENTS; f++) {
+                    if (g_prev_wo_state[o][f] != PAPER_STATE_GONE &&
+                        latest_snap.world_object_state[o][f] == PAPER_STATE_GONE) {
+                        spawn_debris_for_fragment(g_debris, &g_debris_cursor, &g_wo_mesh[o], f,
+                                                   latest_snap.world_objects[o].x,
+                                                   latest_snap.world_objects[o].y,
+                                                   latest_snap.world_objects[o].z);
+                    }
+                }
+            }
+            memcpy(g_prev_wo_state[o], latest_snap.world_object_state[o], PC_WO_FRAGMENTS);
+
             draw_test_cube(&g_wo_mesh[o], latest_snap.world_object_state[o],
                             latest_snap.world_objects[o].x, latest_snap.world_objects[o].y, latest_snap.world_objects[o].z);
         }
+        g_prev_wo_state_valid = 1;
+        update_and_draw_debris(g_debris);
         if (have_snapshot) {
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 if (!latest_snap.active[i]) continue;

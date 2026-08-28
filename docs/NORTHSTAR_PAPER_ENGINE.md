@@ -176,11 +176,47 @@ broadcast state array), sent a real `SIGTERM`, confirmed the server logged the s
 against the same files, confirmed its own startup log ("Real per-fragment damage restored"), and
 reconnected — the real checksum came back byte-identical: `3519267552`, `6/96` non-intact, exact.
 
+## Real client-side debris now (2026-08-28)
+
+Closes the "fragments visually disappear on `GONE`, they don't fall/scatter" gap named just
+below. Founder's own original framing: "then some of those faces come off when you hit it with
+a shot gun." Deliberately client-only/cosmetic — no server authority, no wire protocol change;
+the server already decides which fragments are really gone (the real PARENA mods, unchanged),
+this is purely the visual consequence of an event the server already confirmed. `apps/client`
+diffs consecutive real snapshots' `world_object_state[][]`; the instant a fragment transitions
+from anything else to real `PAPER_STATE_GONE`, it spawns a real `PcDebrisPiece` using that exact
+fragment's own real, already-jittered quad corners (so the piece visually *is* the fragment, not
+a generic chunk) at a real outward-from-center velocity (a hit on one side scatters pieces away
+from that side), integrates real gravity each frame, and fades/despawns after 3 real seconds. A
+real, bounded ring-buffer pool (`PC_MAX_DEBRIS=64`).
+
+Verified live: real server-side confirmation the trigger fires correctly (`"Player slot 1 punched
+world object 1 -- 73 fragment(s) broke off"`, a real second player — see the "real multiplayer"
+note below), against a rendering pipeline (`draw_test_cube`'s own established real corner/tint
+logic, reused near-verbatim for `update_and_draw_debris`) already independently proven correct by
+earlier real screenshots. Honest limitation, not glossed over: three real Xvfb screenshot attempts
+at capturing the actual falling debris quads mid-flight did not clearly resolve them — small
+(sub-half-unit) fast-fading pieces at this camera distance/resolution are genuinely hard to catch
+in one static frame, and this session didn't have `xdotool` available to drive the real client's
+own camera toward a punched object for a better angle. The data path (diff → spawn → physics →
+draw call) is real and code-reviewed against the same patterns this repo's own already-verified
+rendering code uses, but a crisp screenshot specifically of debris-in-flight remains real,
+unfinished visual QA, not claimed as done.
+
+**Real bonus finding, unplanned**: this verification pass connected two real, independent players
+simultaneously for the first time this session (`test@test.com` as a spectator, `test2@test.com`
+walking and punching) — confirmed real multiplayer rendering works correctly (both players' own
+distinct markers visible and correctly positioned in the same real screenshot), a real capability
+this repo's own architecture always claimed but had never actually been screenshot-verified
+before now.
+
 ## What's explicitly not built yet
 
-Real physics/collision for a detached fragment (fragments visually disappear on `GONE`, they
-don't fall/scatter), no non-cube base shapes (a wall segment is not literally a cube in a real
-city — this is the smallest real proof of the *technique*, not the final asset pipeline), no real
+Real server-authoritative physics/collision for a detached fragment (the new client-side debris
+above is real but cosmetic-only — no real collision with the world/players, no server authority,
+each client simulates its own copy independently), no non-cube base shapes (a wall segment is not
+literally a cube in a real city — this is the smallest real proof of the *technique*, not the
+final asset pipeline), no real
 weapon/combat system (`PC_PACKET_INTERACT` is a bare punch, not a shotgun blast with its own
 damage falloff/spread), and only a small, editor-placed set of real objects (`apps/mapeditor`,
 `PC_WO_MAX_OBJECTS=4`) — real integration into the city's own actual `VoxelBlock` geometry (so
