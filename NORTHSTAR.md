@@ -356,6 +356,33 @@ closes). Client-side, launched under Xvfb and confirmed the updated `draw_city_w
 correct). `bazel build //...`/`bazel test //...` both clean (unchanged: multi-chunk work only
 touched `packages/common/papercraft_world.h` and both apps' `.c` files, no new Bazel targets).
 
+**Real persistence across a restart is wired in too now (2026-08-28, same day).** Closed the next
+real gap named in "Explicitly not Phase 0" below — every real player's own progression and
+position lived in memory only, reset on every server restart. New
+`packages/common/papercraft_persist.h`: one real, fixed-size flat-binary `PcSaveRecord` per
+player (position, yaw, level, xp, unspent points, talent ranks), keyed by the real 16-byte
+`player_id` IDUNA's own connect ticket already carries, hex-encoded into a filename under a real,
+configurable `--save-dir` (default `var/players`, already covered by this repo's own
+`.gitignore`). Deliberately not SQLite — this repo's own Bazel build has no `libsqlite3`
+dependency wired in yet, and one small struct per player is the real smallest proof of
+restart-survival, not a full save-game system (no world/test-cube-damage persistence yet — real,
+later work). `apps/server`'s own `spawn_player` now tries a real load before falling back to a
+fresh level-1 spawn; a real periodic autosave (every 10s per active player) plus a real
+`SIGINT`/`SIGTERM` handler that flushes every active player immediately cover both the crash case
+(bounded, real staleness window) and the deliberate-restart case (zero real staleness).
+
+Verified live end to end: connected a real player, waited for a real level-up (the real construct
+XP curve — 80xp at 5xp/sec passive tick), spent the real unspent point on MOVE, confirmed real
+pre-restart state (`level=2 xp=85 unspent=0 ability_move=1 pos=(8,65,8)`) — sent a real `SIGTERM`,
+confirmed the server logged `"saved 1 active player(s)"` and a real 52-byte `.pcsave` file landed
+on disk keyed by the real player UUID — restarted the server against the same save dir, confirmed
+its own startup log (`"Real persisted player restored -- level 2, 0 unspent points, position
+(8.0,65.0,8.0)"`) — reconnected with a fresh probe and read back the exact same real level,
+unspent points, and MOVE rank from a live snapshot, position untouched, XP having continued to
+tick upward in real time exactly as it should for a still-live player. `bazel build //...`/`bazel
+test //...` both clean (added `papercraft_persist.h` to `packages/common:common_headers`, no new
+targets).
+
 Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
 Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed
 infrastructure finding, not a guess:
@@ -391,12 +418,12 @@ persistence of anything beyond the current session. Single vehicle-free, on-foot
 `(cx=0,cz=0)` chunk, destruction wiring, talent spending, trick input, persistence across a
 restart, the map editor, the embedded PARENA editor/modding toolchain, any of
 `docs/NORTHSTAR_PAPER_ENGINE.md`'s own further-out mechanics (wet concrete, worker rebuild
-events). Destruction wiring, talent spending, and multi-chunk traversal are now real and shipped
-(see the sections above) — trick input, persistence across a restart, the map editor, the
-embedded PARENA editor/modding toolchain, and the Paper Engine's further-out mechanics remain
-real, later work, the same sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already used (its own
-Phase 0 shipped a single vehicle on one chunk before Phase 1 added a second vehicle or
-destruction).
+events). Destruction wiring, talent spending, multi-chunk traversal, and player persistence across a
+restart are now real and shipped (see the sections above) — trick input, the map editor, the
+embedded PARENA editor/modding toolchain, and the Paper Engine's further-out mechanics (plus real
+world/test-cube-damage persistence, not just player state) remain real, later work, the same
+sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already used (its own Phase 0 shipped a single
+vehicle on one chunk before Phase 1 added a second vehicle or destruction).
 
 ## Explicitly not scoped yet
 

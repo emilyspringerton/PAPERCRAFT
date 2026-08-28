@@ -24,12 +24,14 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #include "../../../packages/common/http_client.h"
 #include "../../../packages/common/hmac_sha256.h"
 #include "../../../packages/common/papercraft_protocol.h"
 #include "../../../packages/common/papercraft_world.h"
 #include "../../../packages/common/paper_mesh.h"
+#include "../../../packages/common/papercraft_persist.h"
 
 #define PC_SERVER_PORT 7799
 #define PC_TICK_HZ 20 /* on-foot movement doesn't need a vehicle sim's own 60Hz -- real, deliberately lower tick rate for Phase 0 */
@@ -55,6 +57,7 @@ typedef struct {
     int has_player_id;
     unsigned char player_id[16];
     unsigned int last_xp_tick_ms; /* real per-second cadence, mirrors the construct's own progression_tick */
+    unsigned int last_save_ms;    /* real periodic-autosave cadence -- see PC_AUTOSAVE_MS */
 } PlayerSlot;
 
 /* Real PARENA-compiled progression decisions (packages/simulation/level_mod.c) -- wiring the
@@ -67,8 +70,43 @@ int on_papercraft_move_speed_boost_permille(int move_rank);
 
 #define PC_XP_TICK_MS   1000 /* real 1-second cadence, matches SHANKPIT_CONSTRUCT.txt's own progression_tick */
 #define PC_XP_PER_TICK  5    /* matches the construct's own real progression_add_xp(5) passive rate */
+#define PC_AUTOSAVE_MS  10000 /* real periodic per-player save cadence -- 10s, real, bounded worst-case
+                                  data loss on a crash (not a clean shutdown -- that saves everyone
+                                  immediately, see g_shutdown_requested below), not tuned against any
+                                  real production load yet */
 
 static PlayerSlot g_slots[PC_MAX_PLAYERS];
+static char g_save_dir[256] = "var/players";
+
+/* g_shutdown_requested: set by a real SIGINT/SIGTERM handler -- lets a deliberate server restart
+   (not just a crash) flush every real active player's own current state to disk before exiting,
+   the real reason "persistence across a restart" needs more than just the periodic autosave
+   above. Handler body is signal-safe (a single sig_atomic_t write only); the actual real save
+   work happens in the main loop, not inside the handler. */
+static volatile sig_atomic_t g_shutdown_requested = 0;
+static void handle_shutdown_signal(int sig) {
+    (void)sig;
+    g_shutdown_requested = 1;
+}
+
+/* save_player: writes one real player's own current progression + position to disk, matching the
+   real PcSaveRecord shape packages/common/papercraft_persist.h defines. A no-op for a slot that
+   never carried a real player_id (shouldn't happen in practice -- every active slot gets one on
+   CONNECT -- but a real, cheap guard against saving garbage). Logs, doesn't crash, on a real save
+   failure -- a lost autosave tick is recoverable data loss, not a fatal server error. */
+static void save_player(const PlayerSlot *s) {
+    if (!s->has_player_id) return;
+    PcSaveRecord rec;
+    rec.magic = PC_SAVE_MAGIC;
+    rec.x = s->state.x; rec.y = s->state.y; rec.z = s->state.z; rec.yaw = s->state.yaw;
+    rec.level = s->state.level;
+    rec.xp = s->state.xp;
+    rec.unspent_points = s->state.unspent_points;
+    for (int i = 0; i < PC_ABILITY_COUNT; i++) rec.ability[i] = s->state.ability[i];
+    if (!pc_persist_save(g_save_dir, s->player_id, &rec)) {
+        fprintf(stderr, "WARNING: save_player failed for a real active player -- disk full/permissions?\n");
+    }
+}
 
 /* Connect-ticket secret -- direct port of WEAKNIGHT_BEDROCK_RACERS' own real
    load_ticket_secret/verify_connect_ticket pair (apps/server/src/main.c). Fails closed: an unset
@@ -156,12 +194,35 @@ static int fetch_city_world(const char *worldapi_host, int worldapi_port) {
     return 1;
 }
 
-/* spawn_player: real ground-height lookup at a chosen spawn column (8,8 -- confirmed clear of
-   this chunk's own two real wall structures, both sitting near the chunk's corners), not a
-   hardcoded Y. Falls back to a real, logged warning (not a silent wrong spawn) if that column
-   genuinely has no solid block under it. */
+/* spawn_player: real restart-persistence load-or-fresh-spawn (packages/common/
+   papercraft_persist.h). If a real save exists for this slot's own player_id (s->has_player_id
+   must already be set -- see the CONNECT handler, which sets it before calling this now),
+   restores real position + progression from disk instead of resetting to level 1 -- closing
+   NORTHSTAR.md's own "Explicitly not Phase 0: ... persistence across a restart." Falls through to
+   the original real fresh-spawn path (ground-height lookup at column (8,8), confirmed clear of
+   this chunk's own two real wall structures) for a genuinely new player_id, or a real save-file
+   read failure (missing/corrupt) -- not a hardcoded Y either way. */
 static void spawn_player(PlayerSlot *s) {
     memset(&s->state, 0, sizeof(s->state));
+
+    if (s->has_player_id) {
+        PcSaveRecord rec;
+        if (pc_persist_load(g_save_dir, s->player_id, &rec)) {
+            s->state.x = rec.x;
+            s->state.y = rec.y;
+            s->state.z = rec.z;
+            s->state.yaw = rec.yaw;
+            s->state.level = rec.level;
+            s->state.xp = rec.xp;
+            s->state.xp_to_next = xp_required_for_level(rec.level < 20 ? rec.level + 1 : 20);
+            s->state.unspent_points = rec.unspent_points;
+            for (int i = 0; i < PC_ABILITY_COUNT; i++) s->state.ability[i] = rec.ability[i];
+            printf("Real persisted player restored -- level %d, %d unspent points, position (%.1f,%.1f,%.1f).\n",
+                   rec.level, rec.unspent_points, rec.x, rec.y, rec.z);
+            return;
+        }
+    }
+
     int spawn_x = 8, spawn_z = 8;
     int ground_y;
     if (pw_world_ground_height_at(&g_world, spawn_x, spawn_z, &ground_y)) {
@@ -176,10 +237,10 @@ static void spawn_player(PlayerSlot *s) {
     }
     s->state.yaw = 0.0f;
     /* Real starting progression, matching the construct's own progression_reset -- level 1, no
-       XP, no unspent points. Persists across a reconnect within this same server run (spawn_player
-       only runs once, the first time a player_id claims a slot) -- real, honest, in-memory-only
-       persistence, not the full cross-restart persistence NORTHSTAR.md's own Phase 0 bar
-       explicitly defers. */
+       XP, no unspent points. Only reached for a genuinely new player_id (or a real save-file
+       read failure) -- an existing player_id with a real, valid save on disk returns above
+       instead, restoring real progression across a restart now (packages/common/
+       papercraft_persist.h), not just within one server run. */
     s->state.level = 1;
     s->state.xp = 0;
     s->state.xp_to_next = xp_required_for_level(2);
@@ -195,7 +256,16 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "--worldapi-host") == 0 && i + 1 < argc) worldapi_host = argv[++i];
         else if (strcmp(argv[i], "--worldapi-port") == 0 && i + 1 < argc) worldapi_port = atoi(argv[++i]);
         else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) server_port = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--save-dir") == 0 && i + 1 < argc) {
+            strncpy(g_save_dir, argv[++i], sizeof(g_save_dir) - 1);
+            g_save_dir[sizeof(g_save_dir) - 1] = '\0';
+        }
     }
+
+    pc_persist_ensure_dir(g_save_dir);
+    printf("Real player persistence dir: %s\n", g_save_dir);
+    signal(SIGINT, handle_shutdown_signal);
+    signal(SIGTERM, handle_shutdown_signal);
 
     printf("PAPERCRAFT server (single-node persistent) -- fetching real %dx%d chunk grid from worldapi %s:%d (scene=200)...\n",
            PW_GRID_DIM, PW_GRID_DIM, worldapi_host, worldapi_port);
@@ -249,6 +319,18 @@ int main(int argc, char **argv) {
     unsigned int server_tick = 0;
 
     for (;;) {
+        /* Real graceful shutdown -- a deliberate SIGINT/SIGTERM (a real restart, not a crash)
+           flushes every real active player's own current state to disk immediately, rather than
+           relying on the periodic autosave's own real, bounded staleness window. */
+        if (g_shutdown_requested) {
+            int saved_count = 0;
+            for (int i = 0; i < PC_MAX_PLAYERS; i++) {
+                if (g_slots[i].active) { save_player(&g_slots[i]); saved_count++; }
+            }
+            printf("Real shutdown signal received -- saved %d active player(s), exiting.\n", saved_count);
+            break;
+        }
+
         /* Real bug found live (2026-08-28, wiring the real progression fields into
            PcPlayerState): a hardcoded 512-byte recv buffer silently truncated
            PcSnapshotPacket once it grew past 512 bytes (real sizeof = 540, once the compiler's
@@ -302,6 +384,11 @@ int main(int argc, char **argv) {
 
                 PlayerSlot *s = &g_slots[slot_idx];
                 if (!s->active) {
+                    /* Real player_id must land on the slot BEFORE spawn_player runs -- spawn_player's
+                       own real persistence lookup (packages/common/papercraft_persist.h) keys off
+                       s->has_player_id/s->player_id, so this order matters now, not just cosmetically. */
+                    s->has_player_id = 1;
+                    memcpy(s->player_id, player_id, 16);
                     s->active = 1;
                     spawn_player(s);
                     printf("Player claimed slot %d from %s:%d\n", slot_idx, inet_ntoa(from.sin_addr), ntohs(from.sin_port));
@@ -462,6 +549,14 @@ int main(int argc, char **argv) {
                                i, old_level, new_level, s->state.xp, new_level - old_level);
                     }
                     s->state.xp_to_next = xp_required_for_level(s->state.level < 20 ? s->state.level + 1 : 20);
+                }
+
+                /* Real periodic autosave -- bounded, real worst-case data loss on a crash (not a
+                   clean shutdown, which flushes everyone immediately below). */
+                if (s->last_save_ms == 0) s->last_save_ms = now;
+                if (now - s->last_save_ms >= PC_AUTOSAVE_MS) {
+                    s->last_save_ms = now;
+                    save_player(s);
                 }
             }
 
