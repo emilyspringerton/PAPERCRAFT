@@ -36,6 +36,7 @@
 #include "../../../packages/common/http_client.h"
 #include "../../../packages/common/papercraft_protocol.h"
 #include "../../../packages/common/papercraft_world.h"
+#include "../../../packages/common/paper_mesh.h"
 #include "../../../packages/common/hud_text.h"
 
 static unsigned int now_ms(void) { return SDL_GetTicks(); }
@@ -300,6 +301,27 @@ static void draw_city_chunk(const PwChunk *chunk) {
     glEnd();
 }
 
+/* draw_test_cube: renders the real Paper Engine destructible prop -- every fragment whose real
+   server-broadcast state isn't PAPER_STATE_GONE, at its own real jittered corners (the
+   independently-regenerated, byte-identical local geometry), translated to the cube's own real
+   world position. Real damage tiers get a real, visibly different tint -- cracked/torn fragments
+   read as damaged, not just present-or-absent. */
+static void draw_test_cube(const PaperCubeMesh *mesh, const unsigned char *state, float wx, float wy, float wz) {
+    glBegin(GL_QUADS);
+    for (int i = 0; i < mesh->fragment_count; i++) {
+        unsigned char st = state[i];
+        if (st == PAPER_STATE_GONE) continue;
+        if (st == PAPER_STATE_TORN) glColor3f(0.45f, 0.3f, 0.25f);
+        else if (st == PAPER_STATE_CRACKED) glColor3f(0.55f, 0.5f, 0.45f);
+        else glColor3f(0.62f, 0.6f, 0.58f); /* INTACT -- real concrete grey, slightly lighter than the city's own so the prop reads as a distinct object */
+        const PaperFragment *f = &mesh->fragments[i];
+        for (int c = 0; c < 4; c++) {
+            glVertex3f(wx + f->corners[c].x, wy + f->corners[c].y, wz + f->corners[c].z);
+        }
+    }
+    glEnd();
+}
+
 /* draw_progression_hud: real "LVL %d  XP %d/%d  PTS %d" readout, the exact real HUD line format
    SHANKPIT_CONSTRUCT.txt's own code already used (grepped, not invented -- construct's own
    lvl_buf snprintf), now driven by real server-authoritative state (PcPlayerState's own
@@ -388,6 +410,23 @@ int main(int argc, char **argv) {
         }
     }
     printf("Real city chunk loaded (%d blocks).\n", g_chunk.block_count);
+
+    /* Real Paper Engine test cube -- independently regenerated from the exact same real
+       seed/subdiv/material the server used (PC_TEST_CUBE_*, papercraft_protocol.h), verified
+       deterministic by paper_mesh_test.c. Only the server's own real per-fragment STATE crosses
+       the wire every snapshot; the geometry itself never does. */
+    static PaperCubeMesh g_test_cube;
+    static float g_test_cube_y;
+    {
+        int ground_y;
+        if (pw_ground_height_at(&g_chunk, (int)PC_TEST_CUBE_X, (int)PC_TEST_CUBE_Z, &ground_y)) {
+            g_test_cube_y = (float)ground_y + PC_TEST_CUBE_HALF_EXTENT;
+        } else {
+            g_test_cube_y = PC_TEST_CUBE_HALF_EXTENT;
+        }
+        paper_generate_cube(&g_test_cube, PC_TEST_CUBE_HALF_EXTENT, PC_TEST_CUBE_SUBDIV,
+                             PC_TEST_CUBE_MATERIAL, PC_TEST_CUBE_SEED);
+    }
 
 #ifdef _WIN32
     WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);
@@ -483,6 +522,14 @@ int main(int argc, char **argv) {
                     req.ability_index = (unsigned char)ability_idx;
                     sendto(sock, &req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
                 }
+                /* Real "punch/interact" -- E, one real request per keypress. The server derives
+                   the real hit point from the player's own position+yaw; this just asks. */
+                if (e.key.keysym.sym == SDLK_e) {
+                    PcInteractPacket req; memset(&req, 0, sizeof(req));
+                    req.hdr.type = PC_PACKET_INTERACT;
+                    req.hdr.sequence = ++allocate_seq;
+                    sendto(sock, &req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+                }
             }
         }
 
@@ -570,6 +617,10 @@ int main(int argc, char **argv) {
         gluLookAt(eye_x, eye_y, eye_z, own.x, own.y + 1.0f, own.z, 0.0, 1.0, 0.0);
 
         draw_city_chunk(&g_chunk);
+        /* latest_snap is zero-initialized (PAPER_STATE_INTACT == 0), so before the first real
+           snapshot arrives this correctly reads as "every fragment intact" -- no separate
+           fallback array needed. */
+        draw_test_cube(&g_test_cube, latest_snap.test_cube_state, PC_TEST_CUBE_X, g_test_cube_y, PC_TEST_CUBE_Z);
         if (have_snapshot) {
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 if (!latest_snap.active[i]) continue;

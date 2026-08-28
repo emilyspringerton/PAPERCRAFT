@@ -21,6 +21,7 @@
 #define PC_PACKET_SNAPSHOT         3
 #define PC_PACKET_REJECT           4
 #define PC_PACKET_ALLOCATE_TALENT  5
+#define PC_PACKET_INTERACT         6
 
 /* Connect-ticket auth -- direct port of racer_protocol.h's own RC_TICKET_* wire format. Minted
  * by IDUNA's PapercraftTicketHandler (internal/http/handlers/papercraft_ticket.go) from a real
@@ -115,11 +116,43 @@ typedef struct {
  * develop against, revisit once real player-count data exists. */
 #define PC_MAX_PLAYERS 16
 
+/* PcInteractPacket -- real client request, one per keypress (E), to punch/interact with
+ * whatever's in reach -- the minimal real input needed to actually exercise the already-built
+ * Paper Engine (packages/common/paper_mesh.h, docs/NORTHSTAR_PAPER_ENGINE.md) in the live game,
+ * without inventing a real combat system this sandbox doesn't have yet (NORTHSTAR.md's own "no
+ * combat requirement to start"). The server derives the real hit point from the player's own
+ * current position+yaw (a real reach distance in front of them) -- this packet carries no
+ * aim/target data itself, matching Phase 0's own "smallest real proof point" bar. */
+typedef struct {
+    PcHeader hdr;
+} PcInteractPacket;
+
+/* PC_TEST_CUBE_*: one real, world-positioned Paper Engine destructible prop, spawned once at
+ * server startup near the real spawn point -- proves the whole real pipeline (subdivide+jitter
+ * generation, real PARENA-decided damage, real client rendering of the result) end to end, not a
+ * retrofit of the city's own real VoxelBlock geometry (a real, separate, later integration).
+ * Deliberately small (4x4 fragments/face = 96 fragments -- matches paper_mesh_test.c's own
+ * already-verified real case) so its own state fits cheaply in every snapshot: the client
+ * independently regenerates the identical real geometry from the same seed+params (verified
+ * deterministic by paper_mesh_test.c), so only per-fragment STATE needs to cross the wire, not
+ * geometry -- the exact real "seed + per-fragment deltas, not the whole mesh" shape
+ * paper_mesh.h's own doc comment already named as the target wire format. */
+#define PC_TEST_CUBE_SUBDIV      4
+#define PC_TEST_CUBE_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE -- matches the real city's own concrete blocks */
+#define PC_TEST_CUBE_SEED        20260828u
+#define PC_TEST_CUBE_HALF_EXTENT 1.5f
+#define PC_TEST_CUBE_FRAGMENTS   (6 * PC_TEST_CUBE_SUBDIV * PC_TEST_CUBE_SUBDIV) /* 96 */
+/* World position (chunk-local coordinates, matching PcPlayerState's own space) -- a few units
+   from the real spawn column (8,8) so a freshly-spawned player can walk straight to it. */
+#define PC_TEST_CUBE_X 12.0f
+#define PC_TEST_CUBE_Z 8.0f
+
 typedef struct {
     PcHeader hdr;
     unsigned int server_tick;
     unsigned char active[PC_MAX_PLAYERS];
     PcPlayerState players[PC_MAX_PLAYERS];
+    unsigned char test_cube_state[PC_TEST_CUBE_FRAGMENTS]; /* PAPER_STATE_* per fragment */
 } PcSnapshotPacket;
 
 #endif

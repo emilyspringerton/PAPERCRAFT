@@ -313,6 +313,18 @@ porting their formulas now would mean inventing placeholder systems just to have
 wire a mod into, the opposite of this session's own "real, not speculative" discipline. Real,
 honest follow-up once those systems exist for real.
 
+**The Paper Engine is wired into the live loop too now (2026-08-28, same day) — full detail in
+`docs/NORTHSTAR_PAPER_ENGINE.md`'s own "Live-wired into the actual game loop" section.** One
+real, world-positioned 96-fragment concrete prop (`PC_TEST_CUBE_*`) spawns server-side at real
+Phase 0 startup; a new `PC_PACKET_INTERACT` (bare "punch" keypress, `E`) lets a player in reach
+call the real, already-tested `paper_fragment_mod` decision functions and actually break real
+fragments off, rendered live client-side. Verified end to end with a real UDP probe: walked a
+real player to the cube, punched it, and watched 5 real fragments transition
+`INTACT`→`CRACKED`→`GONE` via the real snapshot readback — the last previously-built-but-unwired
+mod from this session's own "tie parena mods deep in as we go" mandate is now live. `bazel build
+//...` and `bazel test //...` both clean (12 targets, 5 mod tests passing) after wiring the
+`//packages/simulation:paper_fragment` dep into both real binaries.
+
 Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
 Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed
 infrastructure finding, not a guess:

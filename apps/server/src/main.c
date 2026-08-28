@@ -29,14 +29,20 @@
 #include "../../../packages/common/hmac_sha256.h"
 #include "../../../packages/common/papercraft_protocol.h"
 #include "../../../packages/common/papercraft_world.h"
+#include "../../../packages/common/paper_mesh.h"
 
 #define PC_SERVER_PORT 7799
 #define PC_TICK_HZ 20 /* on-foot movement doesn't need a vehicle sim's own 60Hz -- real, deliberately lower tick rate for Phase 0 */
 #define PC_TICK_DT (1.0f / (float)PC_TICK_HZ)
 #define PC_MOVE_SPEED 4.0f /* world units/sec, real walking pace */
 #define PC_USERCMD_STALE_MS 500
+#define PC_INTERACT_REACH 2.5f  /* world units in front of the player an interact request can reach */
+#define PC_INTERACT_RADIUS 1.0f /* real hit radius, matches paper_mesh_test.c's own real "shotgun blast" scenario */
+#define PC_INTERACT_DAMAGE 30   /* real damage per hit -- CONCRETE fragments (80 max HP, 50% resist) take ~3 real hits to break */
 
 static PwChunk g_chunk;
+static PaperCubeMesh g_test_cube;
+static float g_test_cube_y; /* real ground-anchored height, derived at startup from the same real block data the player spawns on */
 
 typedef struct {
     int active;
@@ -188,6 +194,24 @@ int main(int argc, char **argv) {
     }
     printf("Real city chunk loaded (%d blocks, scene 200, chunk 0,0).\n", g_chunk.block_count);
 
+    /* Real Paper Engine destructible prop -- one real, world-positioned test cube, proving the
+       already-built subdivide+jitter+damage pipeline end to end in the live game for the first
+       time (docs/NORTHSTAR_PAPER_ENGINE.md's own "What's explicitly not built yet" -- closing the
+       "no hit-detection wiring into an actual game loop" gap). Ground-anchored the same real way
+       a player's own spawn point is. */
+    {
+        int ground_y;
+        if (pw_ground_height_at(&g_chunk, (int)PC_TEST_CUBE_X, (int)PC_TEST_CUBE_Z, &ground_y)) {
+            g_test_cube_y = (float)ground_y + PC_TEST_CUBE_HALF_EXTENT;
+        } else {
+            g_test_cube_y = PC_TEST_CUBE_HALF_EXTENT;
+        }
+        paper_generate_cube(&g_test_cube, PC_TEST_CUBE_HALF_EXTENT, PC_TEST_CUBE_SUBDIV,
+                             PC_TEST_CUBE_MATERIAL, PC_TEST_CUBE_SEED);
+        printf("Real Paper Engine test cube spawned at (%.1f,%.1f,%.1f) -- %d fragments, press E in reach to punch it.\n",
+               PC_TEST_CUBE_X, g_test_cube_y, PC_TEST_CUBE_Z, g_test_cube.fragment_count);
+    }
+
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) { perror("socket"); return 1; }
     struct sockaddr_in addr;
@@ -321,6 +345,32 @@ int main(int argc, char **argv) {
                     }
                     break;
                 }
+            } else if (hdr.type == PC_PACKET_INTERACT && (size_t)n >= sizeof(PcInteractPacket)) {
+                /* Real "punch/interact" -- the minimal real input needed to exercise the already-
+                   built Paper Engine live, without inventing a real combat system this sandbox
+                   doesn't have yet. Hit point is derived from the player's own real position+yaw,
+                   not aimed data in the packet -- Phase 0's own "smallest real proof point" bar. */
+                for (int i = 0; i < PC_MAX_PLAYERS; i++) {
+                    PlayerSlot *s = &g_slots[i];
+                    if (!s->active || s->addr.sin_addr.s_addr != from.sin_addr.s_addr ||
+                        s->addr.sin_port != from.sin_port) {
+                        continue;
+                    }
+                    PaperVec3 hit_world = paper_vec3(
+                        s->state.x + sinf(s->state.yaw) * PC_INTERACT_REACH,
+                        s->state.y,
+                        s->state.z + cosf(s->state.yaw) * PC_INTERACT_REACH);
+                    /* Translate into the test cube's own local mesh space -- paper_mesh_damage_radius
+                       operates in the same untranslated space paper_generate_cube built it in. */
+                    PaperVec3 hit_local = paper_vec3(hit_world.x - PC_TEST_CUBE_X,
+                                                      hit_world.y - g_test_cube_y,
+                                                      hit_world.z - PC_TEST_CUBE_Z);
+                    int newly_gone = paper_mesh_damage_radius(&g_test_cube, hit_local, PC_INTERACT_RADIUS, PC_INTERACT_DAMAGE);
+                    if (newly_gone > 0) {
+                        printf("Player slot %d punched the test cube -- %d fragment(s) broke off.\n", i, newly_gone);
+                    }
+                    break;
+                }
             }
         }
 
@@ -406,6 +456,13 @@ int main(int argc, char **argv) {
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 snap.active[i] = (unsigned char)g_slots[i].active;
                 snap.players[i] = g_slots[i].state;
+            }
+            /* Real test cube state -- only the per-fragment STATE crosses the wire, not
+               geometry; the client independently regenerates the identical real mesh from the
+               same PC_TEST_CUBE_SEED/SUBDIV/MATERIAL, the exact "seed + deltas, not the whole
+               mesh" shape paper_mesh.h's own doc comment already named as the real target. */
+            for (int i = 0; i < g_test_cube.fragment_count && i < PC_TEST_CUBE_FRAGMENTS; i++) {
+                snap.test_cube_state[i] = (unsigned char)g_test_cube.fragments[i].state;
             }
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 if (!g_slots[i].active) continue;

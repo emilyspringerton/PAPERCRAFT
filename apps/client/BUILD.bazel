@@ -5,6 +5,7 @@ cc_binary(
     srcs = ["src/main.c"],
     deps = [
         "//packages/common:common_headers",
+        "//packages/simulation:paper_fragment",
     ],
     linkopts = ["-lSDL2", "-lGL", "-lGLU", "-lm"],
     visibility = ["//visibility:public"],

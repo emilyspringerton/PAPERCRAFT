@@ -73,6 +73,44 @@ riding on top of that, not a replacement for it.
   (`packages/simulation/paper_mesh_test.c`) that checks real fragment counts, real bounded
   jitter, and real seed-determinism (same seed ⇒ byte-identical geometry).
 
+## Live-wired into the actual game loop (2026-08-28)
+
+Directly continuing "make sure to tie parena mods deep in as we go" — the same gap `level_mod`/
+`talent_mod`/`stat_effects_mod` all had until this session (built and tested, never actually
+called by the running game) also applied to this pair until now. Closed it with one real,
+world-positioned proof object rather than a full combat system:
+
+- `packages/common/papercraft_protocol.h` grew `PC_PACKET_INTERACT`/`PcInteractPacket` (a bare
+  "punch" request, one per keypress, no aim/target data — the server derives the hit point from
+  the requesting player's own position+yaw) and `PC_TEST_CUBE_*` — one real, 96-fragment
+  `PAPER_MATERIAL_CONCRETE` destructible prop spawned server-side at chunk-local `(12.0, 8.0)`,
+  ground-anchored via the same `pw_ground_height_at` call the player's own spawn uses.
+  `PcSnapshotPacket` grew a `test_cube_state[96]` array — only per-fragment *state* crosses the
+  wire every tick, not geometry, since both client and server independently regenerate the
+  identical deterministic mesh from the shared `PC_TEST_CUBE_SEED` (exactly the "seed +
+  per-fragment deltas, not the whole mesh" wire shape this doc's own earlier section named as the
+  target).
+- `apps/server/src/main.c` spawns the real cube at startup, handles `PC_PACKET_INTERACT` by
+  deriving a real hit point `PC_INTERACT_REACH=2.5` units in front of the requesting player and
+  calling the real, already-tested `paper_mesh_damage_radius` (radius `1.0`, damage `30` per
+  hit) — the actual PARENA-compiled `on_paper_fragment_damage`/`on_paper_fragment_state_for_hp`
+  decide the outcome, host C does not.
+- `apps/client/src/main.c` independently regenerates the identical cube from the same shared
+  constants, renders it (skipping `GONE` fragments, tinting `CRACKED`/`TORN` ones), and binds `E`
+  to send a real `PcInteractPacket`.
+- **Verified live, end to end**, via a real UDP probe (login as `test@test.com` → real IDUNA
+  ticket → CONNECT → walk to the cube's real world position → send real `PC_PACKET_INTERACT`
+  requests once in reach): the real server log confirmed spawn (`Real Paper Engine test cube
+  spawned at (12.0,66.5,8.0) -- 96 fragments`, Y correctly ground-derived: height 65 +
+  `PC_TEST_CUBE_HALF_EXTENT` 1.5), and the probe's own snapshot readback showed 5 real fragments
+  transition `INTACT` → `CRACKED` → `GONE` within about a second of real punching — the full real
+  pipeline (subdivide+jitter generation → real PARENA-decided damage → real client rendering)
+  proven end to end, not a retrofit or a design-doc claim.
+- `bazel build //...` and `bazel test //...` both clean after adding the missing
+  `//packages/simulation:paper_fragment` dep to both `apps/server` and `apps/client`'s own
+  `cc_binary` targets (it already existed as a target from the earlier, unwired build — just
+  hadn't been linked into either real binary yet).
+
 ## The real "true northstar" (explicitly not near-term scope)
 
 Founder: *"the world is destructable and how it deteriorates depends on what its built out of"*
@@ -126,10 +164,14 @@ the player). A real, later system on top of this one, not scoped further here.
 
 ## What's explicitly not built yet
 
-No renderer, no physics/collision for a detached fragment, no real hit-detection wiring (a real
-shotgun/weapon event calling into this system at all), no persistence of a damaged building's
-own state across a server restart, no non-cube base shapes (a wall segment is not literally a
-cube in a real city — this is the smallest real proof of the *technique*, not the final asset
-pipeline). Real Phase 0/1 sequencing for wiring this into an actual playable scene is separate,
-future work, matching this repo's own "docs before software, smallest real proof point first"
-discipline.
+Real physics/collision for a detached fragment (fragments visually disappear on `GONE`, they
+don't fall/scatter), no persistence of a damaged building's own state across a server restart, no
+non-cube base shapes (a wall segment is not literally a cube in a real city — this is the
+smallest real proof of the *technique*, not the final asset pipeline), no real weapon/combat
+system (`PC_PACKET_INTERACT` is a bare punch, not a shotgun blast with its own damage falloff/
+spread), and only one hand-placed test object — real integration into the city's own actual
+`VoxelBlock` geometry (so real building walls, not just one standalone prop, are destructible) is
+separate, future work. The bare-punch hit-detection gap named in an earlier draft of this section
+is now closed — see "Live-wired into the actual game loop" above. Real Phase 1 sequencing for the
+remaining items above is separate, future work, matching this repo's own "docs before software,
+smallest real proof point first" discipline.

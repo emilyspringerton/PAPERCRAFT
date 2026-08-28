@@ -8,6 +8,7 @@ cc_binary(
         "//packages/simulation:level",
         "//packages/simulation:talent",
         "//packages/simulation:stat_effects",
+        "//packages/simulation:paper_fragment",
     ],
     linkopts = ["-lm"],
     visibility = ["//visibility:public"],
