@@ -67,9 +67,21 @@ typedef struct {
 
 #define PC_BTN_JUMP 1
 
+/* Real RPG progression fields (2026-08-28, wiring the already-tested level_mod.c/talent_mod.c
+ * into the actual live game loop for the first time -- "keep the experience gain from the
+ * construct i like the idea of papercraft having a leveling system"). Mirrors
+ * SHANKPIT_CONSTRUCT.txt's own real MatchProgression fields (level, xp, unspent_points) -- see
+ * apps/server/src/main.c's own real per-second XP tick, the same real cadence
+ * progression_tick's own construct code uses. xp_to_next is the real cumulative total (from
+ * xp_required_for_level, packages/simulation/level_mod.c) the client needs to draw a real
+ * progress readout without re-deriving the curve itself. */
 typedef struct {
     float x, y, z;
     float yaw; /* radians, world-space heading */
+    int level;
+    int xp;
+    int xp_to_next;
+    int unspent_points;
 } PcPlayerState;
 
 /* PC_MAX_PLAYERS -- real, bounded slot count for Phase 0. Not derived from any real capacity

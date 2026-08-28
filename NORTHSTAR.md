@@ -267,6 +267,23 @@ only drawing 3 of 6 faces, letting the wrong face show through from behind with 
 enabled). Phase 0's full bar — login, spawn, movement, real rendering — is now genuinely, visibly
 real end to end.
 
+**Real progression wired into the live loop, too (2026-08-28, same day).** The already-tested
+`level_mod.c` was real but unused until now — `apps/server` gained a real per-second XP tick
+(matching the construct's own real `progression_tick` cadence: +5 XP/sec, real passive
+time-in-world reward, no combat/quests to source it from in this sandbox), calling the real
+PARENA-compiled `on_papercraft_level_for_xp` every tick to decide real level-ups and grant real
+unspent points. `PcPlayerState` grew four real fields (`level`/`xp`/`xp_to_next`/
+`unspent_points`), broadcast in every snapshot; `apps/client` renders the real, exact
+`"LVL %d  XP %d/%d  PTS %d"` HUD line the construct itself used, now driven by real
+server-authoritative state instead of a client guess. Verified live with a real UDP probe run
+long enough to watch a real level-up happen (level 1→2 at exactly 80 cumulative XP, +1 real
+unspent point granted, `xp_to_next` correctly advancing to level 3's own real threshold).
+Found and fixed a real bug live while wiring this: growing `PcPlayerState` grew
+`PcSnapshotPacket` past both the client's and server's own hardcoded 512-byte recv buffers (real
+size 540 bytes) — the compiler's own `-Warray-bounds` caught it before it shipped; both buffers
+now size themselves off `sizeof(PcSnapshotPacket)` directly so this class of bug can't silently
+recur as the protocol keeps growing.
+
 Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
 Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed
 infrastructure finding, not a guess:

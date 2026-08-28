@@ -300,6 +300,24 @@ static void draw_city_chunk(const PwChunk *chunk) {
     glEnd();
 }
 
+/* draw_progression_hud: real "LVL %d  XP %d/%d  PTS %d" readout, the exact real HUD line format
+   SHANKPIT_CONSTRUCT.txt's own code already used (grepped, not invented -- construct's own
+   lvl_buf snprintf), now driven by real server-authoritative state (PcPlayerState's own
+   level/xp/xp_to_next/unspent_points fields) instead of a client-local guess. */
+static void draw_progression_hud(int win_w, int win_h, const PcPlayerState *own) {
+    glDisable(GL_DEPTH_TEST);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, win_w, 0, win_h, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    char line[96];
+    snprintf(line, sizeof(line), "LVL %d  XP %d/%d  PTS %d", own->level, own->xp, own->xp_to_next, own->unspent_points);
+    glColor3f(0.95f, 0.95f, 0.6f);
+    pc_draw_string(line, 20.0f, (float)win_h - 30.0f, 9);
+}
+
 static void draw_player_marker(float x, float y, float z, float yaw, int is_own) {
     glPushMatrix();
     glTranslatef(x, y + 0.9f, z);
@@ -441,7 +459,10 @@ int main(int argc, char **argv) {
             last_connect_retry_ms = now;
         }
 
-        char buf[512];
+        /* Sized off the real wire format itself, not a guessed constant -- see
+           apps/server/src/main.c's own matching comment for the real 512-byte truncation bug
+           this found and fixed. */
+        char buf[sizeof(PcSnapshotPacket) + 64];
         ssize_t n;
         while ((n = recv(sock, buf, sizeof(buf), 0)) > 0) {
             if ((size_t)n < sizeof(PcHeader)) continue;
@@ -522,6 +543,7 @@ int main(int argc, char **argv) {
                 PcPlayerState *p = &latest_snap.players[i];
                 draw_player_marker(p->x, p->y, p->z, p->yaw, i == my_slot);
             }
+            draw_progression_hud(win_w, win_h, &own);
         }
 
         SDL_GL_SwapWindow(win);

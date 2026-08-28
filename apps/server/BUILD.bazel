@@ -5,6 +5,7 @@ cc_binary(
     srcs = ["src/main.c"],
     deps = [
         "//packages/common:common_headers",
+        "//packages/simulation:level",
     ],
     linkopts = ["-lm"],
     visibility = ["//visibility:public"],

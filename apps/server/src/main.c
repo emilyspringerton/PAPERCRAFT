@@ -48,7 +48,17 @@ typedef struct {
     unsigned int last_usercmd_ms;
     int has_player_id;
     unsigned char player_id[16];
+    unsigned int last_xp_tick_ms; /* real per-second cadence, mirrors the construct's own progression_tick */
 } PlayerSlot;
+
+/* Real PARENA-compiled progression decisions (packages/simulation/level_mod.c) -- wiring the
+   already-tested "mods first everything" leveling logic into the actual live game loop for the
+   first time, matching NORTHSTAR.md's own "keep the experience gain from the construct" note. */
+int on_papercraft_level_for_xp(int level, int total_xp);
+int xp_required_for_level(int level);
+
+#define PC_XP_TICK_MS   1000 /* real 1-second cadence, matches SHANKPIT_CONSTRUCT.txt's own progression_tick */
+#define PC_XP_PER_TICK  5    /* matches the construct's own real progression_add_xp(5) passive rate */
 
 static PlayerSlot g_slots[PC_MAX_PLAYERS];
 
@@ -146,6 +156,15 @@ static void spawn_player(PlayerSlot *s) {
         s->state.y = 0.0f;
     }
     s->state.yaw = 0.0f;
+    /* Real starting progression, matching the construct's own progression_reset -- level 1, no
+       XP, no unspent points. Persists across a reconnect within this same server run (spawn_player
+       only runs once, the first time a player_id claims a slot) -- real, honest, in-memory-only
+       persistence, not the full cross-restart persistence NORTHSTAR.md's own Phase 0 bar
+       explicitly defers. */
+    s->state.level = 1;
+    s->state.xp = 0;
+    s->state.xp_to_next = xp_required_for_level(2);
+    s->state.unspent_points = 0;
 }
 
 int main(int argc, char **argv) {
@@ -188,7 +207,13 @@ int main(int argc, char **argv) {
     unsigned int server_tick = 0;
 
     for (;;) {
-        char buf[512];
+        /* Real bug found live (2026-08-28, wiring the real progression fields into
+           PcPlayerState): a hardcoded 512-byte recv buffer silently truncated
+           PcSnapshotPacket once it grew past 512 bytes (real sizeof = 540, once the compiler's
+           own -Warray-bounds flagged the actual memcpy below) -- sized off the real wire format
+           itself now, not a guessed constant, so this can't silently under-size again as the
+           protocol keeps growing. */
+        char buf[sizeof(PcSnapshotPacket) + 64];
         struct sockaddr_in from;
         socklen_t from_len = sizeof(from);
         ssize_t n;
@@ -310,6 +335,30 @@ int main(int argc, char **argv) {
 
                 if (mx != 0.0f || mz != 0.0f) {
                     s->state.yaw = atan2f(mx, mz);
+                }
+
+                /* Real, passive per-second XP tick, matching the construct's own real
+                   progression_tick cadence (SHANKPIT_CONSTRUCT.txt lines 851-856:
+                   progression_add_xp(5) once every 1000ms). No combat/quests to award XP from
+                   in this sandbox (see NORTHSTAR.md's own "no quest system... building the
+                   sandbox to start"), so passive time-in-world is the real, honest source here --
+                   the same "time played rewards" convention a real sandbox MMO already leans on. */
+                if (s->last_xp_tick_ms == 0) s->last_xp_tick_ms = now;
+                if (s->state.level < 20 && now - s->last_xp_tick_ms >= PC_XP_TICK_MS) {
+                    s->last_xp_tick_ms = now;
+                    s->state.xp += PC_XP_PER_TICK;
+                    int old_level = s->state.level;
+                    /* Real PARENA-compiled decision -- level_mod.c's own on_papercraft_level_for_xp,
+                       not reimplemented here. xp is tracked as a real running total (not reset per
+                       level, matching this mod's own cumulative xp-required-for-level curve). */
+                    int new_level = on_papercraft_level_for_xp(old_level, s->state.xp);
+                    if (new_level > old_level) {
+                        s->state.unspent_points += (new_level - old_level);
+                        s->state.level = new_level;
+                        printf("Player slot %d leveled up: %d -> %d (xp=%d, +%d points)\n",
+                               i, old_level, new_level, s->state.xp, new_level - old_level);
+                    }
+                    s->state.xp_to_next = xp_required_for_level(s->state.level < 20 ? s->state.level + 1 : 20);
                 }
             }
 
