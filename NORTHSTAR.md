@@ -296,10 +296,22 @@ decides, host applies" split every real mod call site in this monorepo already u
 `apps/client` shows a real `[1]MOVE n [2]VIT n [3]HANDLE n [4]SHIELD n [5]STORM n` readout
 whenever there's a real point to spend. Verified live end-to-end with a real UDP probe: waited
 for a real level-up to grant a point, sent a real allocation request, confirmed the real server
-applied it (`ability[MOVE]` 0→1, `unspent_points` 1→0). The real per-stat gameplay *effects*
-(`progression_apply_bonuses`'s own move-speed boost, passive health/shield regen, cooldown
-reduction) are still real, later work — this wires the real *spending* decision, not the real
-stat consequences yet.
+applied it (`ability[MOVE]` 0→1, `unspent_points` 1→0).
+
+**The real MOVE stat effect is wired too now (2026-08-28, same day).** A new
+`PARENA/stdlib/papercraft/stat_effects_mod.prn` → `on-papercraft-move-speed-boost-permille`
+ports the construct's own real formula (`progression_apply_bonuses`: `boost = 1.0 + 0.035 *
+move`) as I32 fixed-point permille (VS0 has no F32 params yet — same real ceiling every other
+mod in this monorepo respects); `apps/server` does the one real float division needed to turn
+that back into an actual speed multiplier. Verified live with a real UDP probe measuring actual
+distance covered per real second: baseline movement, then a real level-up + real MOVE
+allocation, then boosted movement — the measured speed ratio came back **1.0350**, exactly
+matching the real construct formula (`1.0 + 0.035 * 1`), not approximately. The other four
+construct stats (vitality/handling/shield/storm) are **deliberately not ported** — they modify
+real health/shield/attack-cooldown/ability-cooldown systems this sandbox doesn't have yet;
+porting their formulas now would mean inventing placeholder systems just to have something to
+wire a mod into, the opposite of this session's own "real, not speculative" discipline. Real,
+honest follow-up once those systems exist for real.
 
 Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
 Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed

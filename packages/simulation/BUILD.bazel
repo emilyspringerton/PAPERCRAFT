@@ -61,3 +61,20 @@ cc_test(
     srcs = ["talent_mod_test.c"],
     deps = [":talent"],
 )
+
+# stat_effects -- the real, PARENA-compiled per-stat gameplay CONSEQUENCE of a spent talent
+# point, ported from the real construct's own progression_apply_bonuses (SHANKPIT_CONSTRUCT.txt
+# lines 819-846) -- MOVE only for now, see the .prn's own doc comment for why
+# vitality/handling/shield/storm are deliberately not ported yet (no real systems to affect).
+cc_library(
+    name = "stat_effects",
+    srcs = ["stat_effects_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "stat_effects_mod_test",
+    srcs = ["stat_effects_mod_test.c"],
+    deps = [":stat_effects"],
+)

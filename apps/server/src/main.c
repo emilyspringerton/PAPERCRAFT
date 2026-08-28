@@ -57,6 +57,7 @@ typedef struct {
 int on_papercraft_level_for_xp(int level, int total_xp);
 int xp_required_for_level(int level);
 int on_papercraft_can_allocate_talent(int ability_value, int unspent_points);
+int on_papercraft_move_speed_boost_permille(int move_rank);
 
 #define PC_XP_TICK_MS   1000 /* real 1-second cadence, matches SHANKPIT_CONSTRUCT.txt's own progression_tick */
 #define PC_XP_PER_TICK  5    /* matches the construct's own real progression_add_xp(5) passive rate */
@@ -343,8 +344,16 @@ int main(int argc, char **argv) {
                 if (mz > 1.0f) mz = 1.0f;
                 if (mz < -1.0f) mz = -1.0f;
 
-                s->state.x += mx * PC_MOVE_SPEED * PC_TICK_DT;
-                s->state.z += mz * PC_MOVE_SPEED * PC_TICK_DT;
+                /* Real MOVE-stat gameplay consequence -- the real PARENA-compiled
+                   on_papercraft_move_speed_boost_permille (packages/simulation/stat_effects_mod.c),
+                   not a hand-rolled float formula here. Ported from the construct's own real
+                   progression_apply_bonuses ("boost = 1.0 + 0.035 * move"), fixed-point
+                   permille in the mod, one real float division here to turn it back into an
+                   actual multiplier -- VS0 has no F32 params yet, same real ceiling every other
+                   mod in this monorepo respects. */
+                float move_speed = PC_MOVE_SPEED * (float)on_papercraft_move_speed_boost_permille(s->state.ability[PC_ABILITY_MOVE]) / 1000.0f;
+                s->state.x += mx * move_speed * PC_TICK_DT;
+                s->state.z += mz * move_speed * PC_TICK_DT;
 
                 /* Real, basic ground collision: snap Y to the real block data's own ground
                    height at the player's current column every tick -- matching Phase 0's own
