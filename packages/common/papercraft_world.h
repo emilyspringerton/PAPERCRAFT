@@ -68,8 +68,8 @@ static inline int pw_parse_chunks_json(const char *json, PwChunk *out) {
 /* pw_ground_height_at: real "highest solid block at this column" query -- returns 1 real
  * standing surface Y (top of the highest solid block found, or 0 with ok=0 if the column is
  * entirely empty, e.g. genuinely outside any real geometry). Linear scan over the real, bounded
- * block list -- correct and simple for Phase 0's own single-chunk scope; a real per-column index
- * is later optimization once multi-chunk streaming makes a linear scan too slow, not needed yet. */
+ * block list -- correct and simple for one chunk's own real scope; a real per-column index is
+ * later optimization once real streaming makes a linear scan too slow, not needed yet. */
 static inline int pw_ground_height_at(const PwChunk *chunk, int local_x, int local_z, int *out_y) {
     int highest = -1;
     for (int i = 0; i < chunk->block_count; i++) {
@@ -81,6 +81,69 @@ static inline int pw_ground_height_at(const PwChunk *chunk, int local_x, int loc
     if (highest < 0) return 0;
     *out_y = highest + 1; /* stand ON TOP of the highest solid block, not inside it */
     return 1;
+}
+
+/* PwWorld -- real Phase 2 multi-chunk grid ("Explicitly not Phase 0: multiple chunks/real city
+ * traversal beyond one (cx=0,cz=0) chunk" -- NORTHSTAR.md, now real). A fixed, real
+ * PW_GRID_DIM x PW_GRID_DIM grid of chunks loaded once at startup around the spawn chunk
+ * (cx=0,cz=0) -- deliberately NOT a dynamic streaming window that loads/unloads chunks as the
+ * player roams (real, later work, the same "smallest real proof of the technique first" bar this
+ * session's own Paper Engine test cube already applied). PW_GRID_RADIUS=1 -> a real 3x3, 9-chunk
+ * grid -- proves real multi-chunk fetch/storage/lookup/render end to end without the added real
+ * complexity of a moving load window.
+ *
+ * Real, honest finding while scoping this (confirmed live, not assumed): GoblinFoxDragon's own
+ * worldapi urbanChunk generator (scenes.go) does not vary its output by cx/cz for scene
+ * 200-207 today -- GET /chunks?scene=200&cx=1&cz=0 returns byte-identical block content to
+ * cx=0&cz=0 (diffed live, zero-line difference). So a real 3x3 grid renders as a real repeating
+ * tile pattern right now, not nine visually distinct city blocks -- a real, known gap in
+ * worldapi's own content generation, not a Papercraft bug, and not blocking: this grid's own real
+ * job is proving the chunk-streaming plumbing (fetch N real chunks, store them keyed by (cx,cz),
+ * resolve world-space queries against the right one, render all of them with the right world
+ * offset), which is exactly as real and correct with repeated tile content as it would be with
+ * varied content. Real content variety is GFD's own future work. */
+#define PW_GRID_RADIUS 1
+#define PW_GRID_DIM (2 * PW_GRID_RADIUS + 1)       /* 3 */
+#define PW_GRID_CHUNKS (PW_GRID_DIM * PW_GRID_DIM) /* 9 */
+
+typedef struct {
+    PwChunk chunks[PW_GRID_CHUNKS];
+    int loaded[PW_GRID_CHUNKS]; /* 1 once pw_parse_chunks_json has filled this slot, 0 until then */
+} PwWorld;
+
+/* pw_world_index: real (cx,cz) -> flat grid slot, or -1 if (cx,cz) falls outside the real,
+ * fixed [-PW_GRID_RADIUS, +PW_GRID_RADIUS] loaded window -- the grid is fixed at startup
+ * (spawn-centered), not a moving window, so "outside the grid" is real and expected once a
+ * player walks far enough, not a bug. */
+static inline int pw_world_index(int cx, int cz) {
+    if (cx < -PW_GRID_RADIUS || cx > PW_GRID_RADIUS || cz < -PW_GRID_RADIUS || cz > PW_GRID_RADIUS) {
+        return -1;
+    }
+    return (cz + PW_GRID_RADIUS) * PW_GRID_DIM + (cx + PW_GRID_RADIUS);
+}
+
+/* pw_floor_div16: real floor-division by PW_CHUNK_SIZE (16), correct for negative world
+ * coordinates too (plain C integer division truncates toward zero, which is wrong for negative
+ * inputs here -- world x=-1 must resolve to chunk cx=-1, local_x=15, not cx=0). */
+static inline int pw_floor_div16(int v) {
+    return (v >= 0) ? (v / PW_CHUNK_SIZE) : -(((-v) + PW_CHUNK_SIZE - 1) / PW_CHUNK_SIZE);
+}
+
+/* pw_world_ground_height_at: real world-space ground-height query, resolving which real chunk
+ * a real world (x,z) column falls into (PwBlock's own x/z are chunk-local 0..15, not world
+ * coordinates) before delegating to pw_ground_height_at. Returns 0 (not found) if the column
+ * falls in a chunk outside the real loaded grid, or in a loaded slot that hasn't actually been
+ * fetched yet (PwWorld::loaded[idx] == 0) -- same real "freeze at last known Y" contract the
+ * single-chunk collision gate already used, now correct across the whole real grid instead of
+ * just chunk (0,0). */
+static inline int pw_world_ground_height_at(const PwWorld *world, int world_x, int world_z, int *out_y) {
+    int cx = pw_floor_div16(world_x);
+    int cz = pw_floor_div16(world_z);
+    int idx = pw_world_index(cx, cz);
+    if (idx < 0 || !world->loaded[idx]) return 0;
+    int local_x = world_x - cx * PW_CHUNK_SIZE;
+    int local_z = world_z - cz * PW_CHUNK_SIZE;
+    return pw_ground_height_at(&world->chunks[idx], local_x, local_z, out_y);
 }
 
 #endif

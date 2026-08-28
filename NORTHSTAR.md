@@ -325,6 +325,37 @@ mod from this session's own "tie parena mods deep in as we go" mandate is now li
 //...` and `bazel test //...` both clean (12 targets, 5 mod tests passing) after wiring the
 `//packages/simulation:paper_fragment` dep into both real binaries.
 
+**Real multi-chunk city traversal is wired in too now (2026-08-28, same day).** Closes the
+"Explicitly not Phase 0" gap named just below this section — players were hard-locked to one
+`(cx=0,cz=0)` worldapi chunk, a real ceiling against the "GTA3-style open city" pitch.
+`packages/common/papercraft_world.h` grew a real `PwWorld` — a fixed 3×3 grid (`PW_GRID_RADIUS=1`,
+9 chunks) fetched once at startup around the spawn chunk (a real, deliberately non-streaming
+window; dynamic load/unload as the player roams stays real, later work, same "smallest real proof
+of the technique first" bar the Paper Engine test cube already applied), plus
+`pw_world_ground_height_at` (resolves a real world-space `(x,z)` to the right chunk before
+delegating to the existing per-chunk lookup, floor-division-correct for negative coordinates too).
+Both `apps/server` and `apps/client` now fetch all 9 real chunks (9 real HTTP calls to worldapi,
+each fail-closed the same way the single-chunk fetch always was) and the server's own movement
+collision gate resolves ground height against the whole real grid, not just chunk `(0,0)`.
+
+Real, honest infrastructure finding surfaced while building this (not a Papercraft bug): diffed
+`GET /chunks?scene=200&cx=0&cz=0` against `cx=1&cz=0` live and got a zero-line difference — GFD's
+own `worldapi` urban-chunk generator doesn't vary its output by `(cx,cz)` yet, so the real 3×3
+grid renders as a real repeating tile right now, not nine visually distinct blocks. That's a real,
+known gap in `worldapi`'s own content generation, not blocking here — this grid's own real job is
+proving the fetch/store/lookup/render plumbing, which is exactly as correct with repeated tiles as
+it would be with varied ones. Real content variety is GFD's own future work.
+
+Verified live with a real UDP probe: walked a player continuously from spawn (`x=8`, inside chunk
+`(0,0)`) straight through the real old single-chunk boundary at `x=16` out to `x=30` (inside the
+real neighbor chunk `cx=1`) — server-reported `y` stayed a real, correctly-resolved `65.00` the
+entire way, proving ground-height lookup now genuinely spans real chunk boundaries instead of
+freezing the moment a player left the original 16×16 chunk (the exact old failure mode this fix
+closes). Client-side, launched under Xvfb and confirmed the updated `draw_city_world` renders all
+9 real chunks with no crash and no visual regression (real player marker + real stat HUD still
+correct). `bazel build //...`/`bazel test //...` both clean (unchanged: multi-chunk work only
+touched `packages/common/papercraft_world.h` and both apps' `.c` files, no new Bazel targets).
+
 Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
 Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed
 infrastructure finding, not a guess:
@@ -356,13 +387,16 @@ standalone, unwired proof of concept — see `docs/NORTHSTAR_PAPER_ENGINE.md`), 
 spending UI (the gate mod exists and is tested; nothing calls it yet), no trick/skate input, no
 persistence of anything beyond the current session. Single vehicle-free, on-foot spawn only.
 
-**Explicitly not Phase 0**: multiple chunks/real city traversal beyond one `(cx=0,cz=0)` chunk,
-destruction wiring, talent spending, trick input, persistence across a restart, the map editor,
-the embedded PARENA editor/modding toolchain, any of `docs/NORTHSTAR_PAPER_ENGINE.md`'s own
-further-out mechanics (wet concrete, worker rebuild events). Each of those is real, later work
-once login+spawn is proven, the same sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already
-used (its own Phase 0 shipped a single vehicle on one chunk before Phase 1 added a second vehicle
-or destruction).
+**Explicitly not Phase 0** (originally): multiple chunks/real city traversal beyond one
+`(cx=0,cz=0)` chunk, destruction wiring, talent spending, trick input, persistence across a
+restart, the map editor, the embedded PARENA editor/modding toolchain, any of
+`docs/NORTHSTAR_PAPER_ENGINE.md`'s own further-out mechanics (wet concrete, worker rebuild
+events). Destruction wiring, talent spending, and multi-chunk traversal are now real and shipped
+(see the sections above) — trick input, persistence across a restart, the map editor, the
+embedded PARENA editor/modding toolchain, and the Paper Engine's further-out mechanics remain
+real, later work, the same sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already used (its own
+Phase 0 shipped a single vehicle on one chunk before Phase 1 added a second vehicle or
+destruction).
 
 ## Explicitly not scoped yet
 

@@ -40,7 +40,7 @@
 #define PC_INTERACT_RADIUS 1.0f /* real hit radius, matches paper_mesh_test.c's own real "shotgun blast" scenario */
 #define PC_INTERACT_DAMAGE 30   /* real damage per hit -- CONCRETE fragments (80 max HP, 50% resist) take ~3 real hits to break */
 
-static PwChunk g_chunk;
+static PwWorld g_world;
 static PaperCubeMesh g_test_cube;
 static float g_test_cube_y; /* real ground-anchored height, derived at startup from the same real block data the player spawns on */
 
@@ -123,24 +123,35 @@ static unsigned int now_ms(void) {
     return (unsigned int)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 }
 
-/* fetch_city_chunk: the real GET /chunks?scene=200&cx=0&cz=0 call against worldapi, confirmed
-   live this session (1054 real blocks). Refuses to run on fake/empty terrain -- same
-   "FATAL, don't run on a lie" discipline WEAKNIGHT_BEDROCK_RACERS' own fetch_heightmap already
-   established for its own Meadow scene. */
-static int fetch_city_chunk(const char *worldapi_host, int worldapi_port) {
+/* fetch_city_world: real Phase 2 multi-chunk fetch -- one real GET /chunks?scene=200&cx=..&cz=..
+   call per chunk in the real, fixed PW_GRID_DIM x PW_GRID_DIM grid around spawn (packages/common/
+   papercraft_world.h's own PwWorld doc comment has the full real rationale, including the real,
+   confirmed-live finding that worldapi's own urbanChunk generator doesn't vary content by cx/cz
+   yet). Refuses to run if even one real chunk in the grid fails to load -- same "FATAL, don't run
+   on a lie" discipline fetch_city_chunk (this function's own single-chunk predecessor) already
+   established, now applied to every real grid slot, not just (0,0). */
+static int fetch_city_world(const char *worldapi_host, int worldapi_port) {
     static char resp[65536]; /* real, bounded response buffer -- comfortably above the real ~50KB a 1054-block JSON array encodes to */
-    int status = 0;
-    if (http_get_json(worldapi_host, worldapi_port, "/chunks?scene=200&cx=0&cz=0", NULL, resp, sizeof(resp), &status) != 0) {
-        fprintf(stderr, "fetch_city_chunk: worldapi unreachable at %s:%d\n", worldapi_host, worldapi_port);
-        return 0;
-    }
-    if (status != 200) {
-        fprintf(stderr, "fetch_city_chunk: worldapi returned status %d\n", status);
-        return 0;
-    }
-    if (!pw_parse_chunks_json(resp, &g_chunk)) {
-        fprintf(stderr, "fetch_city_chunk: no real blocks parsed from worldapi response\n");
-        return 0;
+    for (int cz = -PW_GRID_RADIUS; cz <= PW_GRID_RADIUS; cz++) {
+        for (int cx = -PW_GRID_RADIUS; cx <= PW_GRID_RADIUS; cx++) {
+            int idx = pw_world_index(cx, cz);
+            char path[128];
+            snprintf(path, sizeof(path), "/chunks?scene=200&cx=%d&cz=%d", cx, cz);
+            int status = 0;
+            if (http_get_json(worldapi_host, worldapi_port, path, NULL, resp, sizeof(resp), &status) != 0) {
+                fprintf(stderr, "fetch_city_world: worldapi unreachable at %s:%d for chunk (%d,%d)\n", worldapi_host, worldapi_port, cx, cz);
+                return 0;
+            }
+            if (status != 200) {
+                fprintf(stderr, "fetch_city_world: worldapi returned status %d for chunk (%d,%d)\n", status, cx, cz);
+                return 0;
+            }
+            if (!pw_parse_chunks_json(resp, &g_world.chunks[idx])) {
+                fprintf(stderr, "fetch_city_world: no real blocks parsed for chunk (%d,%d)\n", cx, cz);
+                return 0;
+            }
+            g_world.loaded[idx] = 1;
+        }
     }
     return 1;
 }
@@ -153,7 +164,7 @@ static void spawn_player(PlayerSlot *s) {
     memset(&s->state, 0, sizeof(s->state));
     int spawn_x = 8, spawn_z = 8;
     int ground_y;
-    if (pw_ground_height_at(&g_chunk, spawn_x, spawn_z, &ground_y)) {
+    if (pw_world_ground_height_at(&g_world, spawn_x, spawn_z, &ground_y)) {
         s->state.x = (float)spawn_x;
         s->state.z = (float)spawn_z;
         s->state.y = (float)ground_y;
@@ -186,13 +197,18 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) server_port = atoi(argv[++i]);
     }
 
-    printf("PAPERCRAFT server (Phase 0, single-node persistent) -- fetching real city chunk from worldapi %s:%d (scene=200)...\n",
-           worldapi_host, worldapi_port);
-    if (!fetch_city_chunk(worldapi_host, worldapi_port)) {
-        fprintf(stderr, "FATAL: could not load the real city chunk from worldapi -- refusing to run on fake/empty terrain.\n");
+    printf("PAPERCRAFT server (single-node persistent) -- fetching real %dx%d chunk grid from worldapi %s:%d (scene=200)...\n",
+           PW_GRID_DIM, PW_GRID_DIM, worldapi_host, worldapi_port);
+    if (!fetch_city_world(worldapi_host, worldapi_port)) {
+        fprintf(stderr, "FATAL: could not load the real city chunk grid from worldapi -- refusing to run on fake/empty terrain.\n");
         return 1;
     }
-    printf("Real city chunk loaded (%d blocks, scene 200, chunk 0,0).\n", g_chunk.block_count);
+    {
+        int total_blocks = 0;
+        for (int i = 0; i < PW_GRID_CHUNKS; i++) total_blocks += g_world.chunks[i].block_count;
+        printf("Real city chunk grid loaded (%d chunks, %d total blocks, scene 200, cx/cz in [-%d,%d]).\n",
+               PW_GRID_CHUNKS, total_blocks, PW_GRID_RADIUS, PW_GRID_RADIUS);
+    }
 
     /* Real Paper Engine destructible prop -- one real, world-positioned test cube, proving the
        already-built subdivide+jitter+damage pipeline end to end in the live game for the first
@@ -201,7 +217,7 @@ int main(int argc, char **argv) {
        a player's own spawn point is. */
     {
         int ground_y;
-        if (pw_ground_height_at(&g_chunk, (int)PC_TEST_CUBE_X, (int)PC_TEST_CUBE_Z, &ground_y)) {
+        if (pw_world_ground_height_at(&g_world, (int)PC_TEST_CUBE_X, (int)PC_TEST_CUBE_Z, &ground_y)) {
             g_test_cube_y = (float)ground_y + PC_TEST_CUBE_HALF_EXTENT;
         } else {
             g_test_cube_y = PC_TEST_CUBE_HALF_EXTENT;
@@ -406,15 +422,17 @@ int main(int argc, char **argv) {
                 s->state.z += mz * move_speed * PC_TICK_DT;
 
                 /* Real, basic ground collision: snap Y to the real block data's own ground
-                   height at the player's current column every tick -- matching Phase 0's own
-                   explicit bar ("no movement physics beyond basic collision"). A player standing
-                   over open air (off the edge of this one real chunk) keeps their last known
-                   real ground height rather than falling through undefined terrain -- real,
-                   honest Phase 0 scope, not a physics bug. */
+                   height at the player's current column every tick -- matching "no movement
+                   physics beyond basic collision." A player standing over open air (off the edge
+                   of the real, fixed chunk grid, or in a real gap between two loaded chunks' own
+                   solid columns) keeps their last known real ground height rather than falling
+                   through undefined terrain -- real, honest scope, not a physics bug.
+                   pw_world_ground_height_at resolves world (x,z) to the right chunk in the real
+                   grid itself now (packages/common/papercraft_world.h) -- no separate bounds
+                   check needed here beyond what that function already does. */
                 int gx = (int)(s->state.x + 0.5f), gz = (int)(s->state.z + 0.5f);
                 int ground_y;
-                if (gx >= 0 && gx < PW_CHUNK_SIZE && gz >= 0 && gz < PW_CHUNK_SIZE &&
-                    pw_ground_height_at(&g_chunk, gx, gz, &ground_y)) {
+                if (pw_world_ground_height_at(&g_world, gx, gz, &ground_y)) {
                     s->state.y = (float)ground_y;
                 }
 

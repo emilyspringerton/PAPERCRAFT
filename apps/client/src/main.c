@@ -273,30 +273,43 @@ static int run_login_screen(SDL_Window *win, int win_w, int win_h,
     return ok;
 }
 
-/* draw_city_chunk: real, simple per-block cube render -- every block in the real, live worldapi
-   chunk this same client fetched at startup (the same real block data apps/server itself spawns
-   players onto). Immediate-mode GL_QUADS, no face-culling/greedy-meshing yet -- real, correct,
-   simple; 1054 real blocks * 6 faces is well within legacy GL's own real per-frame budget at this
-   scale, optimize later once a real multi-chunk scope makes it matter. */
-static void draw_city_chunk(const PwChunk *chunk) {
+/* draw_city_world: real, simple per-block cube render across the real, fixed multi-chunk grid
+   (packages/common/papercraft_world.h's own PwWorld) -- every block in every real, loaded chunk
+   this same client fetched at startup (the same real block data apps/server itself spawns players
+   onto), each one offset by its own real chunk origin (cx*16, cz*16) so the grid tiles in world
+   space instead of every chunk drawing on top of the others at local (0..15). Immediate-mode
+   GL_QUADS, no face-culling/greedy-meshing yet -- real, correct, simple; still one real
+   glBegin/glEnd pair for the whole grid. Real, honest perf note: this is PW_GRID_CHUNKS times the
+   single-chunk draw cost (9x today) with zero optimization -- fine for this real proof point,
+   revisit with real face-culling/greedy-meshing once chunk count or scene complexity actually
+   makes it matter (matches this repo's own standing "optimize later, not preemptively" call). */
+static void draw_city_world(const PwWorld *world) {
     glColor3f(0.55f, 0.55f, 0.58f); /* real concrete grey, matches worldapi's own "flat concrete city blocks" description */
     glBegin(GL_QUADS);
-    for (int i = 0; i < chunk->block_count; i++) {
-        float x0 = (float)chunk->blocks[i].x, x1 = x0 + 1.0f;
-        float y0 = (float)chunk->blocks[i].y, y1 = y0 + 1.0f;
-        float z0 = (float)chunk->blocks[i].z, z1 = z0 + 1.0f;
-        /* top */
-        glVertex3f(x0, y1, z0); glVertex3f(x1, y1, z0); glVertex3f(x1, y1, z1); glVertex3f(x0, y1, z1);
-        /* bottom */
-        glVertex3f(x0, y0, z0); glVertex3f(x0, y0, z1); glVertex3f(x1, y0, z1); glVertex3f(x1, y0, z0);
-        /* front (+z) */
-        glVertex3f(x0, y0, z1); glVertex3f(x0, y1, z1); glVertex3f(x1, y1, z1); glVertex3f(x1, y0, z1);
-        /* back (-z) */
-        glVertex3f(x0, y0, z0); glVertex3f(x1, y0, z0); glVertex3f(x1, y1, z0); glVertex3f(x0, y1, z0);
-        /* left (-x) */
-        glVertex3f(x0, y0, z0); glVertex3f(x0, y1, z0); glVertex3f(x0, y1, z1); glVertex3f(x0, y0, z1);
-        /* right (+x) */
-        glVertex3f(x1, y0, z0); glVertex3f(x1, y0, z1); glVertex3f(x1, y1, z1); glVertex3f(x1, y1, z0);
+    for (int cz = -PW_GRID_RADIUS; cz <= PW_GRID_RADIUS; cz++) {
+        for (int cx = -PW_GRID_RADIUS; cx <= PW_GRID_RADIUS; cx++) {
+            int idx = pw_world_index(cx, cz);
+            if (idx < 0 || !world->loaded[idx]) continue;
+            const PwChunk *chunk = &world->chunks[idx];
+            float ox = (float)(cx * PW_CHUNK_SIZE), oz = (float)(cz * PW_CHUNK_SIZE);
+            for (int i = 0; i < chunk->block_count; i++) {
+                float x0 = ox + (float)chunk->blocks[i].x, x1 = x0 + 1.0f;
+                float y0 = (float)chunk->blocks[i].y, y1 = y0 + 1.0f;
+                float z0 = oz + (float)chunk->blocks[i].z, z1 = z0 + 1.0f;
+                /* top */
+                glVertex3f(x0, y1, z0); glVertex3f(x1, y1, z0); glVertex3f(x1, y1, z1); glVertex3f(x0, y1, z1);
+                /* bottom */
+                glVertex3f(x0, y0, z0); glVertex3f(x0, y0, z1); glVertex3f(x1, y0, z1); glVertex3f(x1, y0, z0);
+                /* front (+z) */
+                glVertex3f(x0, y0, z1); glVertex3f(x0, y1, z1); glVertex3f(x1, y1, z1); glVertex3f(x1, y0, z1);
+                /* back (-z) */
+                glVertex3f(x0, y0, z0); glVertex3f(x1, y0, z0); glVertex3f(x1, y1, z0); glVertex3f(x0, y1, z0);
+                /* left (-x) */
+                glVertex3f(x0, y0, z0); glVertex3f(x0, y1, z0); glVertex3f(x0, y1, z1); glVertex3f(x0, y0, z1);
+                /* right (+x) */
+                glVertex3f(x1, y0, z0); glVertex3f(x1, y0, z1); glVertex3f(x1, y1, z1); glVertex3f(x1, y1, z0);
+            }
+        }
     }
     glEnd();
 }
@@ -398,18 +411,30 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--password") == 0 && i + 1 < argc) prefill_password = argv[++i];
     }
 
-    printf("Fetching real city chunk from worldapi %s:%d (scene=200)...\n", worldapi_host, worldapi_port);
-    static PwChunk g_chunk;
+    printf("Fetching real %dx%d city chunk grid from worldapi %s:%d (scene=200)...\n", PW_GRID_DIM, PW_GRID_DIM, worldapi_host, worldapi_port);
+    static PwWorld g_world;
     {
         static char resp[131072];
-        int status = 0;
-        if (http_get_json(worldapi_host, worldapi_port, "/chunks?scene=200&cx=0&cz=0", NULL, resp, sizeof(resp), &status) != 0
-            || status != 200 || !pw_parse_chunks_json(resp, &g_chunk)) {
-            fprintf(stderr, "FATAL: could not load the real city chunk from worldapi -- refusing to run on fake/empty terrain.\n");
-            return 1;
+        for (int cz = -PW_GRID_RADIUS; cz <= PW_GRID_RADIUS; cz++) {
+            for (int cx = -PW_GRID_RADIUS; cx <= PW_GRID_RADIUS; cx++) {
+                int idx = pw_world_index(cx, cz);
+                char path[128];
+                snprintf(path, sizeof(path), "/chunks?scene=200&cx=%d&cz=%d", cx, cz);
+                int status = 0;
+                if (http_get_json(worldapi_host, worldapi_port, path, NULL, resp, sizeof(resp), &status) != 0
+                    || status != 200 || !pw_parse_chunks_json(resp, &g_world.chunks[idx])) {
+                    fprintf(stderr, "FATAL: could not load real city chunk (%d,%d) from worldapi -- refusing to run on fake/empty terrain.\n", cx, cz);
+                    return 1;
+                }
+                g_world.loaded[idx] = 1;
+            }
         }
     }
-    printf("Real city chunk loaded (%d blocks).\n", g_chunk.block_count);
+    {
+        int total_blocks = 0;
+        for (int i = 0; i < PW_GRID_CHUNKS; i++) total_blocks += g_world.chunks[i].block_count;
+        printf("Real city chunk grid loaded (%d chunks, %d total blocks).\n", PW_GRID_CHUNKS, total_blocks);
+    }
 
     /* Real Paper Engine test cube -- independently regenerated from the exact same real
        seed/subdiv/material the server used (PC_TEST_CUBE_*, papercraft_protocol.h), verified
@@ -419,7 +444,7 @@ int main(int argc, char **argv) {
     static float g_test_cube_y;
     {
         int ground_y;
-        if (pw_ground_height_at(&g_chunk, (int)PC_TEST_CUBE_X, (int)PC_TEST_CUBE_Z, &ground_y)) {
+        if (pw_world_ground_height_at(&g_world, (int)PC_TEST_CUBE_X, (int)PC_TEST_CUBE_Z, &ground_y)) {
             g_test_cube_y = (float)ground_y + PC_TEST_CUBE_HALF_EXTENT;
         } else {
             g_test_cube_y = PC_TEST_CUBE_HALF_EXTENT;
@@ -616,7 +641,7 @@ int main(int argc, char **argv) {
         glLoadIdentity();
         gluLookAt(eye_x, eye_y, eye_z, own.x, own.y + 1.0f, own.z, 0.0, 1.0, 0.0);
 
-        draw_city_chunk(&g_chunk);
+        draw_city_world(&g_world);
         /* latest_snap is zero-initialized (PAPER_STATE_INTACT == 0), so before the first real
            snapshot arrives this correctly reads as "every fragment intact" -- no separate
            fallback array needed. */
