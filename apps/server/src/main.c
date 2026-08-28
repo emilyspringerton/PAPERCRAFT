@@ -74,6 +74,10 @@ static PwWorld g_world;
 static PcWorldObjectFile g_wo_file;
 static PaperCubeMesh g_wo_mesh[PC_WO_MAX_OBJECTS];
 static char g_world_objects_path[256] = "var/world/objects.dat";
+static char g_world_damage_path[256] = "var/world/damage.dat";
+static unsigned int g_last_world_save_ms = 0; /* real periodic damage-autosave cadence, shared
+                                                  across all objects (not per-player) -- see
+                                                  PC_AUTOSAVE_MS */
 static int g_wo_destroyed_awarded[PC_WO_MAX_OBJECTS]; /* real, per-object "already paid out the
                                                            real xp_award_mod reward" latch -- an
                                                            object stays fully GONE after it's
@@ -151,6 +155,24 @@ static void save_player(const PlayerSlot *s) {
     for (int i = 0; i < PC_ABILITY_COUNT; i++) rec.ability[i] = s->state.ability[i];
     if (!pc_persist_save(g_save_dir, s->player_id, &rec)) {
         fprintf(stderr, "WARNING: save_player failed for a real active player -- disk full/permissions?\n");
+    }
+}
+
+/* save_world_damage: writes every real active world object's own current per-fragment hp to
+   disk -- the real gameplay-state counterpart to apps/mapeditor's own real, editor-authored
+   PcWorldObjectFile. Called on the same real periodic-autosave + graceful-shutdown cadence
+   save_player already uses. */
+static void save_world_damage(void) {
+    PcWorldDamageFile damage;
+    memset(&damage, 0, sizeof(damage));
+    damage.magic = PC_WD_MAGIC;
+    for (int o = 0; o < g_wo_file.count; o++) {
+        for (int f = 0; f < g_wo_mesh[o].fragment_count && f < PC_WO_FRAGMENTS; f++) {
+            damage.hp[o][f] = g_wo_mesh[o].fragments[f].hp;
+        }
+    }
+    if (!pc_worldobjects_save_damage(g_world_damage_path, &damage)) {
+        fprintf(stderr, "WARNING: save_world_damage failed -- disk full/permissions?\n");
     }
 }
 
@@ -331,6 +353,9 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--world-file") == 0 && i + 1 < argc) {
             strncpy(g_world_objects_path, argv[++i], sizeof(g_world_objects_path) - 1);
             g_world_objects_path[sizeof(g_world_objects_path) - 1] = '\0';
+        } else if (strcmp(argv[i], "--damage-file") == 0 && i + 1 < argc) {
+            strncpy(g_world_damage_path, argv[++i], sizeof(g_world_damage_path) - 1);
+            g_world_damage_path[sizeof(g_world_damage_path) - 1] = '\0';
         }
     }
 
@@ -388,6 +413,35 @@ int main(int argc, char **argv) {
     printf("Real Paper Engine: %d world object(s) live (%d fragments each) -- press E in reach to punch one.\n",
            g_wo_file.count, PC_WO_FRAGMENTS);
 
+    /* Real per-fragment damage restore (packages/common/papercraft_worldobjects.h's own
+       PcWorldDamageFile) -- closes docs/NORTHSTAR_PAPER_ENGINE.md's own honestly-named gap ("no
+       persistence of a damaged building's own state across a server restart"). Restores the real
+       source-of-truth hp, then re-derives state via the exact same real PARENA-compiled decision
+       (on_paper_fragment_state_for_hp) fresh damage always uses -- never a separately-persisted,
+       possibly-inconsistent state field. A fully-destroyed object also re-latches
+       g_wo_destroyed_awarded so a restart can't let a player re-earn xp_award_mod's own real
+       reward for an object that was already fully destroyed before the restart. */
+    {
+        PcWorldDamageFile damage;
+        if (pc_worldobjects_load_damage(g_world_damage_path, &damage)) {
+            int restored_objects = 0;
+            for (int o = 0; o < g_wo_file.count; o++) {
+                int gone_count = 0;
+                for (int f = 0; f < g_wo_mesh[o].fragment_count && f < PC_WO_FRAGMENTS; f++) {
+                    PaperFragment *frag = &g_wo_mesh[o].fragments[f];
+                    frag->hp = damage.hp[o][f];
+                    frag->state = on_paper_fragment_state_for_hp(frag->hp, frag->max_hp);
+                    if (frag->state == PAPER_STATE_GONE) gone_count++;
+                }
+                if (gone_count == g_wo_mesh[o].fragment_count) g_wo_destroyed_awarded[o] = 1;
+                restored_objects++;
+            }
+            printf("Real per-fragment damage restored from %s (%d object(s)).\n", g_world_damage_path, restored_objects);
+        } else {
+            printf("No real damage file at %s yet -- every object starts pristine.\n", g_world_damage_path);
+        }
+    }
+
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) { perror("socket"); return 1; }
     struct sockaddr_in addr;
@@ -417,7 +471,8 @@ int main(int argc, char **argv) {
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 if (g_slots[i].active) { save_player(&g_slots[i]); saved_count++; }
             }
-            printf("Real shutdown signal received -- saved %d active player(s), exiting.\n", saved_count);
+            save_world_damage();
+            printf("Real shutdown signal received -- saved %d active player(s) + world object damage, exiting.\n", saved_count);
             break;
         }
 
@@ -729,6 +784,15 @@ int main(int argc, char **argv) {
                     s->last_save_ms = now;
                     save_player(s);
                 }
+            }
+
+            /* Real periodic world-object damage autosave -- same real cadence/bounded-staleness
+               tradeoff as the per-player autosave above, but a single, shared timer (damage isn't
+               per-player). */
+            if (g_last_world_save_ms == 0) g_last_world_save_ms = now;
+            if (now - g_last_world_save_ms >= PC_AUTOSAVE_MS) {
+                g_last_world_save_ms = now;
+                save_world_damage();
             }
 
             /* Real snapshot broadcast to every active real player. */

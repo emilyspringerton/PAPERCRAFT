@@ -104,4 +104,43 @@ static inline int pc_worldobjects_save(const char *path, const PcWorldObjectFile
     return n == 1;
 }
 
+/* PcWorldDamageFile -- real, persisted per-fragment damage state, closing
+ * docs/NORTHSTAR_PAPER_ENGINE.md's own honestly-named gap: "no persistence of a damaged
+ * building's own state across a server restart." Separate from PcWorldObjectFile on purpose --
+ * PcWorldObjectFile is real, editor-authored MAP DATA (apps/mapeditor writes it, offline, rarely
+ * changes); this is real, live GAMEPLAY STATE (apps/server writes it, every autosave tick, mid-
+ * game). Persists per-fragment HP (the real source of truth -- PaperFragment's own `state` is
+ * always re-derived FROM hp via the real PARENA-compiled on_paper_fragment_state_for_hp, both at
+ * damage time and again here on load, never persisted or restored as a separate, possibly
+ * inconsistent field). Indexed by object slot (0..PC_WO_MAX_OBJECTS-1), matching
+ * PcWorldObjectFile's own real object ordering -- a real, later improvement would key this by
+ * something stable across a real map edit that reorders/removes objects (not needed for this
+ * proof point: editing the map while an existing damage save exists is real, later, flagged
+ * work, same as everywhere else in this repo that a "smallest real proof point" boundary was
+ * drawn deliberately, not accidentally). */
+#define PC_WD_MAGIC 0x50435744u /* "PCWD" */
+
+typedef struct {
+    unsigned int magic;
+    int hp[PC_WO_MAX_OBJECTS][PC_WO_FRAGMENTS];
+} PcWorldDamageFile;
+
+static inline int pc_worldobjects_load_damage(const char *path, PcWorldDamageFile *out) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    size_t n = fread(out, sizeof(*out), 1, f);
+    fclose(f);
+    if (n != 1 || out->magic != PC_WD_MAGIC) return 0;
+    return 1;
+}
+
+static inline int pc_worldobjects_save_damage(const char *path, const PcWorldDamageFile *wf) {
+    pc_worldobjects_ensure_dir(path);
+    FILE *f = fopen(path, "wb");
+    if (!f) return 0;
+    size_t n = fwrite(wf, sizeof(*wf), 1, f);
+    fclose(f);
+    return n == 1;
+}
+
 #endif

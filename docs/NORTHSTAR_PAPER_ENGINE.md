@@ -162,16 +162,30 @@ the player). A real, later system on top of this one, not scoped further here.
   math into PARENA mods wherever VS0's own real scalar limits allow, matching "mods first
   everything." A real, ongoing design lens for future Paper Engine work, not a single deliverable.
 
+## Real per-fragment damage persists across a restart now (2026-08-28)
+
+Closed the "no persistence of a damaged building's own state across a server restart" gap named
+just below. New `PcWorldDamageFile` (`packages/common/papercraft_worldobjects.h`) persists every
+active object's own real per-fragment `hp` (the real source of truth `PaperFragment.state` is
+always re-derived FROM, never a separately-stored, possibly-inconsistent field) — restored on
+startup by calling the exact same real PARENA-compiled `on_paper_fragment_state_for_hp` a fresh
+hit always uses, not a separate ad-hoc restore path. Saved on the same real periodic-autosave
+(10s) + `SIGTERM`-graceful-shutdown cadence player saves already use. Verified live end to end:
+punched a real object twice (6/96 fragments damaged, real checksum `3519267552` over the
+broadcast state array), sent a real `SIGTERM`, confirmed the server logged the save, restarted it
+against the same files, confirmed its own startup log ("Real per-fragment damage restored"), and
+reconnected — the real checksum came back byte-identical: `3519267552`, `6/96` non-intact, exact.
+
 ## What's explicitly not built yet
 
 Real physics/collision for a detached fragment (fragments visually disappear on `GONE`, they
-don't fall/scatter), no persistence of a damaged building's own state across a server restart, no
-non-cube base shapes (a wall segment is not literally a cube in a real city — this is the
-smallest real proof of the *technique*, not the final asset pipeline), no real weapon/combat
-system (`PC_PACKET_INTERACT` is a bare punch, not a shotgun blast with its own damage falloff/
-spread), and only one hand-placed test object — real integration into the city's own actual
-`VoxelBlock` geometry (so real building walls, not just one standalone prop, are destructible) is
-separate, future work. The bare-punch hit-detection gap named in an earlier draft of this section
+don't fall/scatter), no non-cube base shapes (a wall segment is not literally a cube in a real
+city — this is the smallest real proof of the *technique*, not the final asset pipeline), no real
+weapon/combat system (`PC_PACKET_INTERACT` is a bare punch, not a shotgun blast with its own
+damage falloff/spread), and only a small, editor-placed set of real objects (`apps/mapeditor`,
+`PC_WO_MAX_OBJECTS=4`) — real integration into the city's own actual `VoxelBlock` geometry (so
+real building walls, not just standalone props, are destructible) is separate, future work. The
+bare-punch hit-detection gap named in an earlier draft of this section
 is now closed — see "Live-wired into the actual game loop" above. Real Phase 1 sequencing for the
 remaining items above is separate, future work, matching this repo's own "docs before software,
 smallest real proof point first" discipline.

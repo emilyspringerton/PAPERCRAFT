@@ -398,8 +398,8 @@ player (position, yaw, level, xp, unspent points, talent ranks), keyed by the re
 configurable `--save-dir` (default `var/players`, already covered by this repo's own
 `.gitignore`). Deliberately not SQLite — this repo's own Bazel build has no `libsqlite3`
 dependency wired in yet, and one small struct per player is the real smallest proof of
-restart-survival, not a full save-game system (no world/test-cube-damage persistence yet — real,
-later work). `apps/server`'s own `spawn_player` now tries a real load before falling back to a
+restart-survival, not a full save-game system (world-object damage persistence shipped separately,
+same day — see the Paper Engine section below). `apps/server`'s own `spawn_player` now tries a real load before falling back to a
 fresh level-1 spawn; a real periodic autosave (every 10s per active player) plus a real
 `SIGINT`/`SIGTERM` handler that flushes every active player immediately cover both the crash case
 (bounded, real staleness window) and the deliberate-restart case (zero real staleness).
@@ -480,14 +480,15 @@ persistence of anything beyond the current session. Single vehicle-free, on-foot
 restart, the map editor, the embedded PARENA editor/modding toolchain, any of
 `docs/NORTHSTAR_PAPER_ENGINE.md`'s own further-out mechanics (wet concrete, worker rebuild
 events). Destruction wiring, talent spending, multi-chunk traversal, player persistence across a restart,
-real jump + a first real trick input, and a first real (offline-CLI) map editor are now real and
-shipped (see the sections above) — the embedded, in-game PARENA editor/modding toolchain (the
-much bigger "compile and start a server on their local and connect to it" vision, see "The real,
-longer-arc modding vision" above), a real graphical/live-server map editor, and the Paper
-Engine's further-out mechanics (plus real world/test-cube-damage persistence, not just player
-state) remain real, later work, the same sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already
-used (its own Phase 0 shipped a single vehicle on one chunk before Phase 1 added a second vehicle
-or destruction).
+real jump + a first real trick input, a first real (offline-CLI) map editor, a documented +
+verified modding pipeline (`MODDING.md`), and real world-object damage persistence across a
+restart are now real and shipped (see the sections above) — the embedded, in-game PARENA
+editor/modding toolchain (a real, no-rebuild-needed, in-game version of the modding pipeline;
+`MODDING.md`'s own "What's honestly not here yet" has the full real gap list), a real
+graphical/live-server map editor, and the Paper Engine's further-out mechanics (fragment
+physics/collision, non-cube shapes, real `VoxelBlock` integration) remain real, later work, the
+same sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already used (its own Phase 0 shipped a
+single vehicle on one chunk before Phase 1 added a second vehicle or destruction).
 
 ## Explicitly not scoped yet
 
