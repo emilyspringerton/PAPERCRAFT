@@ -220,11 +220,32 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   `bazel test //...` green). Still not built: the actual five stat effects
   (`progression_apply_bonuses`'s own real per-stat gameplay hooks), a real UI, and how this ties
   into the real host game loop this repo still doesn't have.
-- **A real map editor, built in from day 0, PARENA-powered** — founder: "build the map editor in
-  from day 0" / "parena powered." Not designed yet; real open question whether/how this relates
-  to `WEAKNIGHT_BEDROCK_RACERS`' own same-day "map editor from day 1" note
-  (`EMILY/BACKLOG.md` S204-08) — same idea independently named for both repos, or one shared
-  tool. Not resolved here.
+- **A real map editor, built in from day 0, PARENA-powered — first real pass shipped
+  (2026-08-28).** Founder: "build the map editor in from day 0" / "parena powered." New
+  `apps/mapeditor` — a real, minimal, offline CLI tool (`mapeditor add/list/remove`) that places
+  real Paper Engine destructible props (`packages/common/papercraft_worldobjects.h`) into a real,
+  persisted world-objects file `apps/server` loads at startup, real-ground-snapping each
+  placement via a live `worldapi` lookup (fails closed on unreachable/missing terrain, same
+  discipline `apps/server`'s own spawn logic already uses). "PARENA powered" here means what
+  actually decides an object's own behavior stays real PARENA
+  (`packages/simulation/paper_fragment_mod.c` decides damage/state-tier for every object placed
+  this way, unchanged) — VS0 is real I32-scalar-only (no file I/O, no structs/arrays crossing its
+  own boundary), so the editor's own host logic is real C like every other tool in this repo, not
+  a PARENA reimplementation of a text editor. The original hardcoded single test cube is now
+  real, editor-owned data too — `apps/server` auto-seeds one matching the original values the
+  very first time it finds no world-objects file, then it's real, persisted, editable data from
+  then on. Up to `PC_WO_MAX_OBJECTS` (4) real objects broadcast at once (a real, bounded cap
+  chosen to keep `PcSnapshotPacket` under a real unfragmented-UDP-packet budget — see the
+  protocol header's own doc comment). Verified live: placed 3 real objects via the editor
+  (CONCRETE/WOOD/METAL, one in the neighbor chunk), confirmed the server loaded and broadcast
+  them correctly, and confirmed real per-object interact targeting — punching near the METAL
+  object damaged only that object, leaving the CONCRETE one fully intact. Real, open question
+  still unresolved: whether/how this relates to `WEAKNIGHT_BEDROCK_RACERS`' own same-day "map
+  editor from day 1" note (`EMILY/BACKLOG.md` S204-08) — same idea independently named for both
+  repos, or one shared tool. Not resolved here. Not yet built: a real graphical/in-game editor
+  (this pass is offline-CLI only, no live-server editing), variable per-object subdivision, and
+  real integration with the city's own `VoxelBlock` geometry (only Paper Engine props are
+  editable so far, not the city itself).
 
 ## The real, longer-arc modding vision
 
@@ -447,11 +468,14 @@ persistence of anything beyond the current session. Single vehicle-free, on-foot
 restart, the map editor, the embedded PARENA editor/modding toolchain, any of
 `docs/NORTHSTAR_PAPER_ENGINE.md`'s own further-out mechanics (wet concrete, worker rebuild
 events). Destruction wiring, talent spending, multi-chunk traversal, player persistence across a restart,
-and real jump + a first real trick input are now real and shipped (see the sections above) — the
-map editor, the embedded PARENA editor/modding toolchain, and the Paper Engine's further-out
-mechanics (plus real world/test-cube-damage persistence, not just player state) remain real,
-later work, the same sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already used (its own Phase
-0 shipped a single vehicle on one chunk before Phase 1 added a second vehicle or destruction).
+real jump + a first real trick input, and a first real (offline-CLI) map editor are now real and
+shipped (see the sections above) — the embedded, in-game PARENA editor/modding toolchain (the
+much bigger "compile and start a server on their local and connect to it" vision, see "The real,
+longer-arc modding vision" above), a real graphical/live-server map editor, and the Paper
+Engine's further-out mechanics (plus real world/test-cube-damage persistence, not just player
+state) remain real, later work, the same sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already
+used (its own Phase 0 shipped a single vehicle on one chunk before Phase 1 added a second vehicle
+or destruction).
 
 ## Explicitly not scoped yet
 

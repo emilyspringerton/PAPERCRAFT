@@ -436,22 +436,19 @@ int main(int argc, char **argv) {
         printf("Real city chunk grid loaded (%d chunks, %d total blocks).\n", PW_GRID_CHUNKS, total_blocks);
     }
 
-    /* Real Paper Engine test cube -- independently regenerated from the exact same real
-       seed/subdiv/material the server used (PC_TEST_CUBE_*, papercraft_protocol.h), verified
-       deterministic by paper_mesh_test.c. Only the server's own real per-fragment STATE crosses
-       the wire every snapshot; the geometry itself never does. */
-    static PaperCubeMesh g_test_cube;
-    static float g_test_cube_y;
-    {
-        int ground_y;
-        if (pw_world_ground_height_at(&g_world, (int)PC_TEST_CUBE_X, (int)PC_TEST_CUBE_Z, &ground_y)) {
-            g_test_cube_y = (float)ground_y + PC_TEST_CUBE_HALF_EXTENT;
-        } else {
-            g_test_cube_y = PC_TEST_CUBE_HALF_EXTENT;
-        }
-        paper_generate_cube(&g_test_cube, PC_TEST_CUBE_HALF_EXTENT, PC_TEST_CUBE_SUBDIV,
-                             PC_TEST_CUBE_MATERIAL, PC_TEST_CUBE_SEED);
-    }
+    /* Real, editor-authored world objects (packages/common/papercraft_worldobjects.h) --
+       replaces the old hardcoded single test cube. Unlike the old compile-time PC_TEST_CUBE_*
+       constants, real object placement is now dynamic, server-broadcast data (apps/mapeditor),
+       so the client can't pre-generate geometry at startup the way it used to -- each active
+       object's own real mesh is generated lazily, the first time this client sees it in a real
+       snapshot, then cached (g_wo_mesh_ready[]) since the server never live-reloads the
+       world-objects file mid-run, so an object's own real position/material/seed/half_extent are
+       effectively static for the life of one server run. Independently regenerates the identical
+       real geometry from the same real seed+params the server used (verified deterministic by
+       paper_mesh_test.c) -- only the server's own real per-fragment STATE crosses the wire every
+       snapshot, never geometry. */
+    static PaperCubeMesh g_wo_mesh[PC_WO_MAX_OBJECTS];
+    static int g_wo_mesh_ready[PC_WO_MAX_OBJECTS];
 
 #ifdef _WIN32
     WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);
@@ -652,10 +649,20 @@ int main(int argc, char **argv) {
         gluLookAt(eye_x, eye_y, eye_z, own.x, own.y + 1.0f, own.z, 0.0, 1.0, 0.0);
 
         draw_city_world(&g_world);
-        /* latest_snap is zero-initialized (PAPER_STATE_INTACT == 0), so before the first real
-           snapshot arrives this correctly reads as "every fragment intact" -- no separate
-           fallback array needed. */
-        draw_test_cube(&g_test_cube, latest_snap.test_cube_state, PC_TEST_CUBE_X, g_test_cube_y, PC_TEST_CUBE_Z);
+        /* latest_snap is zero-initialized, so world_object_active[] correctly reads as "nothing
+           yet" before the first real snapshot arrives -- real, honest, no separate fallback
+           needed (matches the old single-test-cube code's own established discipline for
+           fragment state, now applied to whole-object presence too). */
+        for (int o = 0; o < PC_WO_MAX_OBJECTS; o++) {
+            if (!latest_snap.world_object_active[o]) continue;
+            if (!g_wo_mesh_ready[o]) {
+                const PcWorldObjectDef *def = &latest_snap.world_objects[o];
+                paper_generate_cube(&g_wo_mesh[o], def->half_extent, PC_WO_SUBDIV, def->material, def->seed);
+                g_wo_mesh_ready[o] = 1;
+            }
+            draw_test_cube(&g_wo_mesh[o], latest_snap.world_object_state[o],
+                            latest_snap.world_objects[o].x, latest_snap.world_objects[o].y, latest_snap.world_objects[o].z);
+        }
         if (have_snapshot) {
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 if (!latest_snap.active[i]) continue;

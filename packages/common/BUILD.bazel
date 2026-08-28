@@ -13,6 +13,7 @@ cc_library(
         "papercraft_persist.h",
         "papercraft_protocol.h",
         "papercraft_world.h",
+        "papercraft_worldobjects.h",
     ],
     visibility = ["//visibility:public"],
 )

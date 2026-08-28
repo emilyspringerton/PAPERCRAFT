@@ -65,8 +65,15 @@
                                         slide-jump's boost roughly lasts through the jump it came from */
 
 static PwWorld g_world;
-static PaperCubeMesh g_test_cube;
-static float g_test_cube_y; /* real ground-anchored height, derived at startup from the same real block data the player spawns on */
+/* Real, editor-authored world objects (packages/common/papercraft_worldobjects.h) -- replaces
+   the old hardcoded single test cube with a real, persisted, map-editor-editable object list
+   (apps/mapeditor). g_wo_file holds the real placement data (position/material/seed);
+   g_wo_mesh[i] holds each active object's own real, generated PaperCubeMesh (regenerated once at
+   startup from g_wo_file.objects[i], same real deterministic seed+params the client
+   independently regenerates too). */
+static PcWorldObjectFile g_wo_file;
+static PaperCubeMesh g_wo_mesh[PC_WO_MAX_OBJECTS];
+static char g_world_objects_path[256] = "var/world/objects.dat";
 
 typedef struct {
     int active;
@@ -295,6 +302,9 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--save-dir") == 0 && i + 1 < argc) {
             strncpy(g_save_dir, argv[++i], sizeof(g_save_dir) - 1);
             g_save_dir[sizeof(g_save_dir) - 1] = '\0';
+        } else if (strcmp(argv[i], "--world-file") == 0 && i + 1 < argc) {
+            strncpy(g_world_objects_path, argv[++i], sizeof(g_world_objects_path) - 1);
+            g_world_objects_path[sizeof(g_world_objects_path) - 1] = '\0';
         }
     }
 
@@ -316,23 +326,41 @@ int main(int argc, char **argv) {
                PW_GRID_CHUNKS, total_blocks, PW_GRID_RADIUS, PW_GRID_RADIUS);
     }
 
-    /* Real Paper Engine destructible prop -- one real, world-positioned test cube, proving the
-       already-built subdivide+jitter+damage pipeline end to end in the live game for the first
-       time (docs/NORTHSTAR_PAPER_ENGINE.md's own "What's explicitly not built yet" -- closing the
-       "no hit-detection wiring into an actual game loop" gap). Ground-anchored the same real way
-       a player's own spawn point is. */
-    {
+    /* Real, persisted world objects (packages/common/papercraft_worldobjects.h) -- graduates the
+       original hardcoded single test cube (docs/NORTHSTAR_PAPER_ENGINE.md's own "What's
+       explicitly not built yet" -- closing the "no hit-detection wiring" gap) into real,
+       map-editor-editable data (apps/mapeditor). If no real world-objects file exists yet (a
+       fresh server, or a fresh --world-file path), seeds one real default object matching the
+       original test cube's own position/material/seed -- real, backward-compatible behavior,
+       not a silent behavior change -- and saves it so it's real, persisted data from then on. */
+    if (!pc_worldobjects_load(g_world_objects_path, &g_wo_file)) {
+        memset(&g_wo_file, 0, sizeof(g_wo_file));
+        g_wo_file.magic = PC_WO_MAGIC;
+        g_wo_file.count = 1;
+        g_wo_file.objects[0].x = PC_DEFAULT_OBJECT_X;
+        g_wo_file.objects[0].z = PC_DEFAULT_OBJECT_Z;
+        g_wo_file.objects[0].material = PC_DEFAULT_OBJECT_MATERIAL;
+        g_wo_file.objects[0].half_extent = PC_DEFAULT_OBJECT_HALF_EXTENT;
+        g_wo_file.objects[0].seed = PC_DEFAULT_OBJECT_SEED;
         int ground_y;
-        if (pw_world_ground_height_at(&g_world, (int)PC_TEST_CUBE_X, (int)PC_TEST_CUBE_Z, &ground_y)) {
-            g_test_cube_y = (float)ground_y + PC_TEST_CUBE_HALF_EXTENT;
+        if (pw_world_ground_height_at(&g_world, (int)PC_DEFAULT_OBJECT_X, (int)PC_DEFAULT_OBJECT_Z, &ground_y)) {
+            g_wo_file.objects[0].y = (float)ground_y + PC_DEFAULT_OBJECT_HALF_EXTENT;
         } else {
-            g_test_cube_y = PC_TEST_CUBE_HALF_EXTENT;
+            g_wo_file.objects[0].y = PC_DEFAULT_OBJECT_HALF_EXTENT;
         }
-        paper_generate_cube(&g_test_cube, PC_TEST_CUBE_HALF_EXTENT, PC_TEST_CUBE_SUBDIV,
-                             PC_TEST_CUBE_MATERIAL, PC_TEST_CUBE_SEED);
-        printf("Real Paper Engine test cube spawned at (%.1f,%.1f,%.1f) -- %d fragments, press E in reach to punch it.\n",
-               PC_TEST_CUBE_X, g_test_cube_y, PC_TEST_CUBE_Z, g_test_cube.fragment_count);
+        if (!pc_worldobjects_save(g_world_objects_path, &g_wo_file)) {
+            fprintf(stderr, "WARNING: could not save the real default world-objects file to %s\n", g_world_objects_path);
+        }
+        printf("No real world-objects file at %s -- seeded a real default object.\n", g_world_objects_path);
+    } else {
+        printf("Real world-objects file loaded from %s (%d object(s)).\n", g_world_objects_path, g_wo_file.count);
     }
+    for (int i = 0; i < g_wo_file.count; i++) {
+        paper_generate_cube(&g_wo_mesh[i], g_wo_file.objects[i].half_extent, PC_WO_SUBDIV,
+                             g_wo_file.objects[i].material, g_wo_file.objects[i].seed);
+    }
+    printf("Real Paper Engine: %d world object(s) live (%d fragments each) -- press E in reach to punch one.\n",
+           g_wo_file.count, PC_WO_FRAGMENTS);
 
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) { perror("socket"); return 1; }
@@ -500,14 +528,36 @@ int main(int argc, char **argv) {
                         s->state.x + sinf(s->state.yaw) * PC_INTERACT_REACH,
                         s->state.y,
                         s->state.z + cosf(s->state.yaw) * PC_INTERACT_REACH);
-                    /* Translate into the test cube's own local mesh space -- paper_mesh_damage_radius
-                       operates in the same untranslated space paper_generate_cube built it in. */
-                    PaperVec3 hit_local = paper_vec3(hit_world.x - PC_TEST_CUBE_X,
-                                                      hit_world.y - g_test_cube_y,
-                                                      hit_world.z - PC_TEST_CUBE_Z);
-                    int newly_gone = paper_mesh_damage_radius(&g_test_cube, hit_local, PC_INTERACT_RADIUS, PC_INTERACT_DAMAGE);
-                    if (newly_gone > 0) {
-                        printf("Player slot %d punched the test cube -- %d fragment(s) broke off.\n", i, newly_gone);
+
+                    /* Real nearest-object-in-range pick: among every real, active world object
+                       (packages/common/papercraft_worldobjects.h), the one whose own real center
+                       is both within a real reasonable reach of the derived hit point AND closest
+                       to it takes the hit. Simple, real, correct for a small, bounded object
+                       count -- a real spatial index is later work once PC_WO_MAX_OBJECTS grows
+                       past "linear scan is obviously fine." */
+                    int target = -1;
+                    float best_dist2 = 0.0f;
+                    for (int o = 0; o < g_wo_file.count; o++) {
+                        float dx = hit_world.x - g_wo_file.objects[o].x;
+                        float dy = hit_world.y - g_wo_file.objects[o].y;
+                        float dz = hit_world.z - g_wo_file.objects[o].z;
+                        float dist2 = dx * dx + dy * dy + dz * dz;
+                        float max_reach = g_wo_file.objects[o].half_extent + PC_INTERACT_RADIUS + 0.5f;
+                        if (dist2 <= max_reach * max_reach && (target == -1 || dist2 < best_dist2)) {
+                            target = o;
+                            best_dist2 = dist2;
+                        }
+                    }
+                    if (target >= 0) {
+                        /* Translate into this object's own local mesh space -- paper_mesh_damage_radius
+                           operates in the same untranslated space paper_generate_cube built it in. */
+                        PaperVec3 hit_local = paper_vec3(hit_world.x - g_wo_file.objects[target].x,
+                                                          hit_world.y - g_wo_file.objects[target].y,
+                                                          hit_world.z - g_wo_file.objects[target].z);
+                        int newly_gone = paper_mesh_damage_radius(&g_wo_mesh[target], hit_local, PC_INTERACT_RADIUS, PC_INTERACT_DAMAGE);
+                        if (newly_gone > 0) {
+                            printf("Player slot %d punched world object %d -- %d fragment(s) broke off.\n", i, target, newly_gone);
+                        }
                     }
                     break;
                 }
@@ -657,12 +707,19 @@ int main(int argc, char **argv) {
                 snap.active[i] = (unsigned char)g_slots[i].active;
                 snap.players[i] = g_slots[i].state;
             }
-            /* Real test cube state -- only the per-fragment STATE crosses the wire, not
-               geometry; the client independently regenerates the identical real mesh from the
-               same PC_TEST_CUBE_SEED/SUBDIV/MATERIAL, the exact "seed + deltas, not the whole
-               mesh" shape paper_mesh.h's own doc comment already named as the real target. */
-            for (int i = 0; i < g_test_cube.fragment_count && i < PC_TEST_CUBE_FRAGMENTS; i++) {
-                snap.test_cube_state[i] = (unsigned char)g_test_cube.fragments[i].state;
+            /* Real world-object broadcast -- position/material/seed (so the client can
+               independently regenerate each active object's own identical real geometry) plus
+               only the per-fragment STATE, not geometry, the same real "seed + deltas, not the
+               whole mesh" shape paper_mesh.h's own doc comment already named as the real
+               target. */
+            for (int o = 0; o < PC_WO_MAX_OBJECTS; o++) {
+                snap.world_object_active[o] = (o < g_wo_file.count) ? 1 : 0;
+                if (o < g_wo_file.count) {
+                    snap.world_objects[o] = g_wo_file.objects[o];
+                    for (int f = 0; f < g_wo_mesh[o].fragment_count && f < PC_WO_FRAGMENTS; f++) {
+                        snap.world_object_state[o][f] = (unsigned char)g_wo_mesh[o].fragments[f].state;
+                    }
+                }
             }
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 if (!g_slots[i].active) continue;

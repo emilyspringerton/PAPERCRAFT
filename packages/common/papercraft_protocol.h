@@ -1,6 +1,8 @@
 #ifndef PAPERCRAFT_PROTOCOL_H
 #define PAPERCRAFT_PROTOCOL_H
 
+#include "papercraft_worldobjects.h"
+
 /* papercraft_protocol.h -- real Phase 0 wire protocol (PAPERCRAFT/NORTHSTAR.md's own "Real Phase
  * 0" section: "a player can log in and spawn in the real persistent city, nothing else").
  *
@@ -130,32 +132,45 @@ typedef struct {
     PcHeader hdr;
 } PcInteractPacket;
 
-/* PC_TEST_CUBE_*: one real, world-positioned Paper Engine destructible prop, spawned once at
- * server startup near the real spawn point -- proves the whole real pipeline (subdivide+jitter
- * generation, real PARENA-decided damage, real client rendering of the result) end to end, not a
- * retrofit of the city's own real VoxelBlock geometry (a real, separate, later integration).
- * Deliberately small (4x4 fragments/face = 96 fragments -- matches paper_mesh_test.c's own
- * already-verified real case) so its own state fits cheaply in every snapshot: the client
- * independently regenerates the identical real geometry from the same seed+params (verified
- * deterministic by paper_mesh_test.c), so only per-fragment STATE needs to cross the wire, not
- * geometry -- the exact real "seed + per-fragment deltas, not the whole mesh" shape
- * paper_mesh.h's own doc comment already named as the target wire format. */
-#define PC_TEST_CUBE_SUBDIV      4
-#define PC_TEST_CUBE_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE -- matches the real city's own concrete blocks */
-#define PC_TEST_CUBE_SEED        20260828u
-#define PC_TEST_CUBE_HALF_EXTENT 1.5f
-#define PC_TEST_CUBE_FRAGMENTS   (6 * PC_TEST_CUBE_SUBDIV * PC_TEST_CUBE_SUBDIV) /* 96 */
+/* PC_DEFAULT_OBJECT_*: the real, original world-positioned Paper Engine destructible prop this
+ * session first proved the whole real pipeline with (subdivide+jitter generation, real
+ * PARENA-decided damage, real client rendering), now demoted from a hardcoded runtime constant to
+ * just the real seed values apps/server uses to auto-populate a fresh, empty
+ * packages/common/papercraft_worldobjects.h world-objects file the very first time it finds none
+ * on disk -- from that point on it's real, persisted, map-editor-editable data (apps/mapeditor),
+ * not a compile-time constant. Not a retrofit of the city's own real VoxelBlock geometry (a real,
+ * separate, later integration). */
+#define PC_DEFAULT_OBJECT_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE -- matches the real city's own concrete blocks */
+#define PC_DEFAULT_OBJECT_SEED        20260828u
+#define PC_DEFAULT_OBJECT_HALF_EXTENT 1.5f
 /* World position (chunk-local coordinates, matching PcPlayerState's own space) -- a few units
    from the real spawn column (8,8) so a freshly-spawned player can walk straight to it. */
-#define PC_TEST_CUBE_X 12.0f
-#define PC_TEST_CUBE_Z 8.0f
+#define PC_DEFAULT_OBJECT_X 12.0f
+#define PC_DEFAULT_OBJECT_Z 8.0f
 
+/* Real, bounded, multi-object broadcast (packages/common/papercraft_worldobjects.h) -- up to
+ * PC_WO_MAX_OBJECTS real Paper Engine props, each with its own real editor-placed position/
+ * material/seed (world_objects[]) and per-fragment damage state (world_object_state[][]).
+ * world_object_active[] flags which slots actually hold a real object (a real object list can be
+ * shorter than PC_WO_MAX_OBJECTS). The client independently regenerates each active object's own
+ * identical real geometry from its own broadcast position/material/seed (verified deterministic
+ * by paper_mesh_test.c), so only per-fragment STATE crosses the wire every tick, not geometry --
+ * the same real "seed + per-fragment deltas, not the whole mesh" shape paper_mesh.h's own doc
+ * comment already named as the target wire format, now spanning a real, editor-authored object
+ * list instead of one hardcoded prop. Real, honest size note: PC_WO_MAX_OBJECTS=4 keeps
+ * sizeof(PcSnapshotPacket) comfortably under a real 1472-byte (Ethernet MTU minus IP/UDP headers)
+ * unfragmented-UDP-packet budget -- fine for this proof point's own real localhost/LAN testing;
+ * a real production deployment sensitive to WAN fragmentation is real, later, flagged work, not
+ * addressed here (raising PC_WO_MAX_OBJECTS or adding per-object relevance/streaming both eat
+ * into that same real budget and need real, deliberate accounting when they happen). */
 typedef struct {
     PcHeader hdr;
     unsigned int server_tick;
     unsigned char active[PC_MAX_PLAYERS];
     PcPlayerState players[PC_MAX_PLAYERS];
-    unsigned char test_cube_state[PC_TEST_CUBE_FRAGMENTS]; /* PAPER_STATE_* per fragment */
+    unsigned char world_object_active[PC_WO_MAX_OBJECTS];
+    PcWorldObjectDef world_objects[PC_WO_MAX_OBJECTS];
+    unsigned char world_object_state[PC_WO_MAX_OBJECTS][PC_WO_FRAGMENTS]; /* PAPER_STATE_* per fragment */
 } PcSnapshotPacket;
 
 #endif
