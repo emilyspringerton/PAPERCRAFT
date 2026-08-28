@@ -239,19 +239,54 @@ layer. A real, significant, multi-repo undertaking (PARENA's own editor is real 
 independently — `PARENA/docs/NORTHSTAR_LINNEN.md`, `JEWEL`'s own Jupyter-kernel embedding
 precedent) — named here as the real direction, not scoped into a build plan yet.
 
+## Real Phase 0 — "a player can log in and spawn in the real persistent city, nothing else"
+
+Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
+Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed
+infrastructure finding, not a guess:
+
+**The real city terrain source already exists and is already live** —
+`GoblinFoxDragon/server/worldapi`'s own `ProceduralWorldStore` (`scenes.go`) generates real urban
+chunks for scene IDs 200–207 ("TRAPX city districts," `urbanChunk`: flat concrete city blocks
+with real apartment walls) — confirmed live this session: `GET /chunks?scene=200&cx=0&cz=0`
+returns a real 1054-block `VoxelBlock{X,Y,Z,BlockID}` JSON array right now, on the same worldapi
+instance (`:7070`) `WEAKNIGHT_BEDROCK_RACERS` already calls into. **This, not
+`SHANKPIT_CONSTRUCT.txt`'s own hardcoded client-local `SCENE_CITY`, is the real terrain Phase 0
+should spawn a player into** — same "reuse real infra, don't build a second backend" discipline
+`WEAKNIGHT_BEDROCK_RACERS` already applied to `worldapi`'s Meadow scene. One real, confirmed
+technical difference from that repo's own Phase 0: `worldapi`'s `/heightmap` endpoint (a single
+height-per-column value) only supports scenes 0/1/3 (Meadow/Hills/Swampville) — `HeightmapChunk`
+returns `ok=false` for the urban scenes, because a real city has walls and multiple levels, not
+one height per column. Phase 0 here has to consume the real `/chunks` voxel-block endpoint
+instead, not the simpler heightmap one — genuinely more work than the racer's own Phase 0, not
+glossed over.
+
+**Phase 0 is done when**: a real player can authenticate (reusing IDUNA's own
+`/api/v1/auth/email/login`, the exact real pattern `WEAKNIGHT_BEDROCK_RACERS` already proved and
+verified against the real `test@test.com` account), connect to one real, always-running
+single-node server (no matches, per this doc's own "No matches" section), and see themselves
+spawned somewhere real inside scene 200's own real block data — standing on a real, solid
+surface derived from the real `VoxelBlock` list (not floating, not clipped through a wall). No
+movement physics beyond basic collision, no destruction wiring (the Paper Engine stays a
+standalone, unwired proof of concept — see `docs/NORTHSTAR_PAPER_ENGINE.md`), no talent-point
+spending UI (the gate mod exists and is tested; nothing calls it yet), no trick/skate input, no
+persistence of anything beyond the current session. Single vehicle-free, on-foot spawn only.
+
+**Explicitly not Phase 0**: multiple chunks/real city traversal beyond one `(cx=0,cz=0)` chunk,
+destruction wiring, talent spending, trick input, persistence across a restart, the map editor,
+the embedded PARENA editor/modding toolchain, any of `docs/NORTHSTAR_PAPER_ENGINE.md`'s own
+further-out mechanics (wet concrete, worker rebuild events). Each of those is real, later work
+once login+spawn is proven, the same sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already
+used (its own Phase 0 shipped a single vehicle on one chunk before Phase 1 added a second vehicle
+or destruction).
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled
-above). No destruction-mesh implementation — real, genuinely new engineering work, same honest
-flag `skateboard/NORTHSTAR.md`'s own repo audit already made ("no existing destructible-geometry
-system anywhere in this repo, SHANKPIT, or GFD"). No trick-input scheme, no RPG stat/class system
-beyond the real construct "bones" cited above, no faction/crew system, no vehicle list, no
-mission structure. **No quest system** — founder: "gfd has quests papercraft doesnt really maybe
-missions at some point but not to start we are building the sandbox to start" — GFD/DragonsNShit
-owns quest content in this universe; Papercraft starts as a pure traversal/destruction/skate
-sandbox (matching the "sandbox with MMO DNA" positioning above), missions are real but explicitly
-deferred, not Phase 0/1 scope. This document is direction and real, load-bearing technical
-decisions (not voxels, PARENA-mods-first, city as default spawn, single-node persistent
-online-only, sandbox-first, real XP curve) — not yet a phased build plan. A real Phase 0
-(matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline) is the
-next real pass, not written here.
+above). No trick-input scheme, no RPG stat/class system beyond the real construct "bones" cited
+above (leveling and the talent-allocation gate are real and tested; nothing else), no faction/
+crew system, no vehicle list, no mission structure. **No quest system** — founder: "gfd has
+quests papercraft doesnt really maybe missions at some point but not to start we are building the
+sandbox to start" — GFD/DragonsNShit owns quest content in this universe; Papercraft starts as a
+pure traversal/destruction/skate sandbox (matching the "sandbox with MMO DNA" positioning above),
+missions are real but explicitly deferred, not Phase 0/1 scope.
