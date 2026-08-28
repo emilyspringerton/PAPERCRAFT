@@ -1,0 +1,12 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+# common_headers -- the real header-only bag every apps/* binary's own relative-path #include
+# needs declared as a Bazel input somewhere in its dep graph. Same real shape
+# WEAKNIGHT_BEDROCK_RACERS' own packages/common:common_headers already establishes.
+cc_library(
+    name = "common_headers",
+    hdrs = [
+        "paper_mesh.h",
+    ],
+    visibility = ["//visibility:public"],
+)

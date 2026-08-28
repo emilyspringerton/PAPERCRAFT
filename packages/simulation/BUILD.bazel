@@ -17,3 +17,32 @@ cc_test(
     srcs = ["level_mod_test.c"],
     deps = [":level"],
 )
+
+# paper_fragment -- the real, PARENA-compiled Paper Engine damage-decision logic
+# (docs/NORTHSTAR_PAPER_ENGINE.md). Generated from
+# PARENA/stdlib/papercraft/paper_fragment_mod.prn via `parena build`, committed here.
+cc_library(
+    name = "paper_fragment",
+    srcs = ["paper_fragment_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "paper_fragment_mod_test",
+    srcs = ["paper_fragment_mod_test.c"],
+    deps = [":paper_fragment"],
+)
+
+# paper_mesh_test -- exercises packages/common/paper_mesh.h (the real subdivide-and-jitter cube
+# generator) linked against :paper_fragment (paper_mesh.h calls the real PARENA-compiled
+# on_paper_fragment_damage/on_paper_fragment_state_for_hp functions directly).
+cc_test(
+    name = "paper_mesh_test",
+    srcs = ["paper_mesh_test.c"],
+    deps = [
+        ":paper_fragment",
+        "//packages/common:common_headers",
+    ],
+    linkopts = ["-lm"],
+)
