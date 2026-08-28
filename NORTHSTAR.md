@@ -252,9 +252,20 @@ the real chunk's own solid floor), and ticks real server-authoritative movement 
 ground collision (Y re-derived from the real block data every tick, not simulated). Verified live
 end-to-end with a real UDP probe: real login → real ticket mint → real WELCOME → real movement
 (exactly 2.0 world units per 0.5s at the real 4.0 units/sec walk speed) → real Y staying locked to
-the real ground height throughout. **No client yet** — this proves the real server-side logic;
-rendering a real player standing in a real voxel city is real, separate, next work (see "Explicitly
-not scoped yet" below).
+the real ground height throughout.
+
+**Client shipped and verified too (2026-08-28, same day).** `apps/client` is real and
+live-tested, not a stub: real login screen (ported from `WEAKNIGHT_BEDROCK_RACERS`' own
+GFD-sourced pattern) → real ticket mint (no queue step — straight from ticket to CONNECT) → real
+UDP CONNECT → fetches the same real `worldapi` city chunk itself and renders every real block as
+a real cube (immediate-mode GL, no face-culling yet — real, simple, correct at this scale) → real
+chase camera following wherever the server's own snapshot says the player actually is. Verified
+visually, not just by log line: a real screenshot under Xvfb shows a real sky, the real grey
+concrete ground extending to a real horizon, and the player's own real 6-face marker box standing
+on it, confirmed after fixing a real visual bug found in the first screenshot (the marker was
+only drawing 3 of 6 faces, letting the wrong face show through from behind with no face culling
+enabled). Phase 0's full bar — login, spawn, movement, real rendering — is now genuinely, visibly
+real end to end.
 
 Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
 Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed

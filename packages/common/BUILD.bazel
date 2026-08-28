@@ -8,6 +8,7 @@ cc_library(
     hdrs = [
         "hmac_sha256.h",
         "http_client.h",
+        "hud_text.h",
         "paper_mesh.h",
         "papercraft_protocol.h",
         "papercraft_world.h",
