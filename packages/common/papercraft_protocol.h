@@ -67,7 +67,10 @@ typedef struct {
     unsigned int buttons; /* PC_BTN_* bitmask */
 } PcUserCmdPacket;
 
-#define PC_BTN_JUMP 1
+#define PC_BTN_JUMP    1
+#define PC_BTN_CROUCH  2 /* real, minimal crouch signal -- gates the real slide-jump trick below,
+                            no real crouch collision-height change yet (this game has no capsule/
+                            height collision at all, only column-based ground snapping) */
 
 /* PcAllocateTalentPacket -- real client request to spend one unspent point on one of the real
  * five construct stats (PC_ABILITY_* below). The real DECISION (is this legal right now?) is

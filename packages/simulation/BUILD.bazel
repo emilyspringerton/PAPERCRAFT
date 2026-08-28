@@ -78,3 +78,20 @@ cc_test(
     srcs = ["stat_effects_mod_test.c"],
     deps = [":stat_effects"],
 )
+
+# slide_jump -- the real, PARENA-compiled slide-jump trick magnitude decision, PAPERCRAFT's own
+# first real "trick" input (founder: "PAPERCRAFT is like minecraft meets gta3" -> "plus SKATE2").
+# Ported from the real construct's own "PHASE 485: TUNED SLIDE JUMP"
+# (SHANKPIT_CONSTRUCT.txt lines 9183-9196).
+cc_library(
+    name = "slide_jump",
+    srcs = ["slide_jump_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "slide_jump_mod_test",
+    srcs = ["slide_jump_mod_test.c"],
+    deps = [":slide_jump"],
+)

@@ -383,6 +383,34 @@ tick upward in real time exactly as it should for a still-live player. `bazel bu
 test //...` both clean (added `papercraft_persist.h` to `packages/common:common_headers`, no new
 targets).
 
+**Real jump physics + the first real "trick" input are wired in too now (2026-08-28, same day).**
+Closed the last small item down "Explicitly not Phase 0" before the much bigger map-editor/PARENA-
+editor scope: trick/skate input, the founder's own "plus SKATE2" pitch had zero real movement-
+trick mechanics until now. Real vertical physics (`PC_GRAVITY`/`PC_JUMP_VELOCITY`) are new —
+PAPERCRAFT had none before this (position was always ground-snapped every tick); tuned for this
+game's own real world scale (a ~1-unit-high jump over ~0.83s hangtime at this game's real 4u/s
+walking pace) rather than a blind unit-for-unit copy of `SHANKPIT_CONSTRUCT.txt`'s own
+`GRAVITY_DROP`/`JUMP_FORCE` (per-tick deltas at an unstated real tick rate — porting the raw
+numbers would be a real unit mismatch, not a real port).
+
+What IS a real, faithful port: the construct's own "PHASE 485: TUNED SLIDE JUMP" — a real
+crouch+jump combo that grants a temporary speed boost, `boost_mult = clamp(1.0 + 0.25/speed, 1.02,
+1.4)`. New `PARENA/stdlib/papercraft/slide_jump_mod.prn` →
+`on-papercraft-slide-jump-boost-permille` computes that exact real formula in I32 fixed-point
+(VS0 has no F32 params). PAPERCRAFT has no persistent-momentum movement model (unlike the
+construct's own real vx/vz physics), so the real, honest equivalent here is a timed multiplier
+window (`PC_SLIDE_JUMP_BOOST_MS`) rather than folding into a velocity vector that doesn't exist —
+documented as a deliberate, honest adaptation, not a unit-for-unit copy. New `PC_BTN_CROUCH`
+client input (held, same polling convention `move_x`/`move_z` already use).
+
+Verified live: jumped a real player and confirmed real airborne motion (`y` peaked at `65.92`
+against a `65.0` ground, the real expected order of magnitude for the tuned jump) — then, moving
+at real cruise speed (4.0u/s) with crouch held and a fresh jump press, the server's own log
+confirmed the real trick fired with the exact real PARENA-decided magnitude: `"Player slot 0
+landed a real slide-jump trick -- 1.06x speed for 800ms"`, matching `slide_jump_mod_test.c`'s own
+independently-verified expected value for that exact speed. `bazel build //...`/`bazel test
+//...` both clean (14 targets, 6/6 mod tests — added `slide_jump_mod_test`).
+
 Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
 Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed
 infrastructure finding, not a guess:
@@ -418,12 +446,12 @@ persistence of anything beyond the current session. Single vehicle-free, on-foot
 `(cx=0,cz=0)` chunk, destruction wiring, talent spending, trick input, persistence across a
 restart, the map editor, the embedded PARENA editor/modding toolchain, any of
 `docs/NORTHSTAR_PAPER_ENGINE.md`'s own further-out mechanics (wet concrete, worker rebuild
-events). Destruction wiring, talent spending, multi-chunk traversal, and player persistence across a
-restart are now real and shipped (see the sections above) — trick input, the map editor, the
-embedded PARENA editor/modding toolchain, and the Paper Engine's further-out mechanics (plus real
-world/test-cube-damage persistence, not just player state) remain real, later work, the same
-sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already used (its own Phase 0 shipped a single
-vehicle on one chunk before Phase 1 added a second vehicle or destruction).
+events). Destruction wiring, talent spending, multi-chunk traversal, player persistence across a restart,
+and real jump + a first real trick input are now real and shipped (see the sections above) — the
+map editor, the embedded PARENA editor/modding toolchain, and the Paper Engine's further-out
+mechanics (plus real world/test-cube-damage persistence, not just player state) remain real,
+later work, the same sequencing discipline `WEAKNIGHT_BEDROCK_RACERS` already used (its own Phase
+0 shipped a single vehicle on one chunk before Phase 1 added a second vehicle or destruction).
 
 ## Explicitly not scoped yet
 

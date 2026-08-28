@@ -42,6 +42,28 @@
 #define PC_INTERACT_RADIUS 1.0f /* real hit radius, matches paper_mesh_test.c's own real "shotgun blast" scenario */
 #define PC_INTERACT_DAMAGE 30   /* real damage per hit -- CONCRETE fragments (80 max HP, 50% resist) take ~3 real hits to break */
 
+/* Real jump/gravity physics -- PAPERCRAFT's own first vertical movement, closing the next real
+   gap down NORTHSTAR.md's own "Explicitly not Phase 0" list (trick/skate input) alongside the
+   real slide-jump trick below. Tuned for this game's own real world scale (1 unit = 1 block,
+   PC_MOVE_SPEED = 4 units/sec walking) rather than a blind unit-for-unit copy of
+   SHANKPIT_CONSTRUCT.txt's own GRAVITY_DROP/JUMP_FORCE constants -- the construct's own values
+   are per-tick deltas at an unstated real tick rate and an unconfirmed world scale, so porting
+   the raw numbers here would be a real unit mismatch, not a real port. PC_GRAVITY=12/
+   PC_JUMP_VELOCITY=5 gives a real ~1.04-unit-high jump (v^2/2g) over about 0.83s of real
+   hangtime -- roughly one block, a reasonable "GTA3/Skate2" traversal jump at this scale. What
+   IS ported faithfully from the construct is the real slide-jump trick multiplier formula itself
+   (packages/simulation/slide_jump_mod.c) -- a dimensionless ratio, unaffected by this scale
+   choice. */
+#define PC_GRAVITY 12.0f        /* world units/sec^2 */
+#define PC_JUMP_VELOCITY 5.0f   /* world units/sec, real initial upward impulse on a grounded jump press */
+#define PC_SLIDE_JUMP_MIN_SPEED 0.5f /* real minimum horizontal speed to qualify for a slide-jump, matches the construct's own real gate */
+#define PC_SLIDE_JUMP_BOOST_MS 800   /* real, timed speed-boost window -- PAPERCRAFT has no persistent
+                                        momentum/velocity model yet (unlike the construct's own real
+                                        vx/vz physics), so a real, honest timed multiplier is this
+                                        game's own real equivalent of "boosting your velocity";
+                                        ~matches the real jump's own hangtime above by design, so a
+                                        slide-jump's boost roughly lasts through the jump it came from */
+
 static PwWorld g_world;
 static PaperCubeMesh g_test_cube;
 static float g_test_cube_y; /* real ground-anchored height, derived at startup from the same real block data the player spawns on */
@@ -52,12 +74,21 @@ typedef struct {
     struct sockaddr_in addr;
     socklen_t addr_len;
     float latest_move_x, latest_move_z;
+    unsigned int latest_buttons; /* real PC_BTN_* bitmask from the player's own latest UserCmd */
     unsigned int latest_cmd_seq;
     unsigned int last_usercmd_ms;
     int has_player_id;
     unsigned char player_id[16];
     unsigned int last_xp_tick_ms; /* real per-second cadence, mirrors the construct's own progression_tick */
     unsigned int last_save_ms;    /* real periodic-autosave cadence -- see PC_AUTOSAVE_MS */
+
+    /* Real jump/gravity + slide-jump trick state (not part of PcPlayerState/the wire format --
+       only position/yaw need to cross the wire; vy and the boost window are server-internal). */
+    float vy;
+    int on_ground;
+    int was_holding_jump;
+    int speed_boost_permille;      /* 1000 = no boost; see PC_SLIDE_JUMP_BOOST_MS */
+    unsigned int speed_boost_until_ms;
 } PlayerSlot;
 
 /* Real PARENA-compiled progression decisions (packages/simulation/level_mod.c) -- wiring the
@@ -67,6 +98,7 @@ int on_papercraft_level_for_xp(int level, int total_xp);
 int xp_required_for_level(int level);
 int on_papercraft_can_allocate_talent(int ability_value, int unspent_points);
 int on_papercraft_move_speed_boost_permille(int move_rank);
+int on_papercraft_slide_jump_boost_permille(int speed_milli);
 
 #define PC_XP_TICK_MS   1000 /* real 1-second cadence, matches SHANKPIT_CONSTRUCT.txt's own progression_tick */
 #define PC_XP_PER_TICK  5    /* matches the construct's own real progression_add_xp(5) passive rate */
@@ -217,6 +249,8 @@ static void spawn_player(PlayerSlot *s) {
             s->state.xp_to_next = xp_required_for_level(rec.level < 20 ? rec.level + 1 : 20);
             s->state.unspent_points = rec.unspent_points;
             for (int i = 0; i < PC_ABILITY_COUNT; i++) s->state.ability[i] = rec.ability[i];
+            s->vy = 0.0f;
+            s->on_ground = 1; /* real, honest assumption: a restored player starts standing, not mid-jump */
             printf("Real persisted player restored -- level %d, %d unspent points, position (%.1f,%.1f,%.1f).\n",
                    rec.level, rec.unspent_points, rec.x, rec.y, rec.z);
             return;
@@ -245,6 +279,8 @@ static void spawn_player(PlayerSlot *s) {
     s->state.xp = 0;
     s->state.xp_to_next = xp_required_for_level(2);
     s->state.unspent_points = 0;
+    s->vy = 0.0f;
+    s->on_ground = 1;
 }
 
 int main(int argc, char **argv) {
@@ -419,6 +455,7 @@ int main(int argc, char **argv) {
                         s->latest_cmd_seq = cmd.cmd_sequence;
                         s->latest_move_x = cmd.move_x;
                         s->latest_move_z = cmd.move_z;
+                        s->latest_buttons = cmd.buttons;
                         s->last_usercmd_ms = now_ms();
                     }
                     break;
@@ -503,24 +540,74 @@ int main(int argc, char **argv) {
                    progression_apply_bonuses ("boost = 1.0 + 0.035 * move"), fixed-point
                    permille in the mod, one real float division here to turn it back into an
                    actual multiplier -- VS0 has no F32 params yet, same real ceiling every other
-                   mod in this monorepo respects. */
+                   mod in this monorepo respects. Real slide-jump boost (see below) stacks
+                   multiplicatively on top while its own real, timed window is still active --
+                   both are legitimate, independent speed modifiers. */
                 float move_speed = PC_MOVE_SPEED * (float)on_papercraft_move_speed_boost_permille(s->state.ability[PC_ABILITY_MOVE]) / 1000.0f;
+                if (now < s->speed_boost_until_ms) {
+                    move_speed *= (float)s->speed_boost_permille / 1000.0f;
+                }
+                float horiz_speed = sqrtf(mx * mx + mz * mz) * move_speed;
                 s->state.x += mx * move_speed * PC_TICK_DT;
                 s->state.z += mz * move_speed * PC_TICK_DT;
 
-                /* Real, basic ground collision: snap Y to the real block data's own ground
-                   height at the player's current column every tick -- matching "no movement
-                   physics beyond basic collision." A player standing over open air (off the edge
-                   of the real, fixed chunk grid, or in a real gap between two loaded chunks' own
-                   solid columns) keeps their last known real ground height rather than falling
-                   through undefined terrain -- real, honest scope, not a physics bug.
-                   pw_world_ground_height_at resolves world (x,z) to the right chunk in the real
-                   grid itself now (packages/common/papercraft_world.h) -- no separate bounds
-                   check needed here beyond what that function already does. */
+                int crouching = (s->latest_buttons & PC_BTN_CROUCH) != 0;
+                int jump_held = (s->latest_buttons & PC_BTN_JUMP) != 0;
+                int fresh_jump_press = jump_held && !s->was_holding_jump;
+                s->was_holding_jump = jump_held;
+
+                /* Real jump + gravity physics (PC_GRAVITY/PC_JUMP_VELOCITY, see their own real
+                   doc comment above) -- PAPERCRAFT's first vertical movement. A grounded fresh
+                   jump press launches the player upward; while airborne, real gravity integrates
+                   Y each tick until they land on the real block data's own ground height at their
+                   current column. A player standing over open air (off the real, fixed chunk
+                   grid, or a real gap between two loaded chunks) keeps falling under gravity with
+                   no floor to catch them -- real, honest physics now that real physics exist,
+                   not the old "freeze at last known Y" placeholder (which only ever applied to a
+                   player who was never airborne in the first place). */
                 int gx = (int)(s->state.x + 0.5f), gz = (int)(s->state.z + 0.5f);
-                int ground_y;
-                if (pw_world_ground_height_at(&g_world, gx, gz, &ground_y)) {
-                    s->state.y = (float)ground_y;
+                int ground_y_i = 0;
+                int has_ground = pw_world_ground_height_at(&g_world, gx, gz, &ground_y_i);
+                float ground_y = (float)ground_y_i;
+
+                if (fresh_jump_press && s->on_ground) {
+                    /* Real slide-jump trick, ported from SHANKPIT_CONSTRUCT.txt's own "PHASE 485:
+                       TUNED SLIDE JUMP" -- a crouch+jump combo while already moving grants a
+                       real, PARENA-decided, timed speed boost (packages/simulation/
+                       slide_jump_mod.c). The gate (crouching, minimum speed, fresh press,
+                       grounded) is real, simple host logic; the magnitude is the real mod's own
+                       decision. */
+                    if (crouching && horiz_speed > PC_SLIDE_JUMP_MIN_SPEED) {
+                        int speed_milli = (int)(horiz_speed * 1000.0f);
+                        int boost_permille = on_papercraft_slide_jump_boost_permille(speed_milli);
+                        s->speed_boost_permille = boost_permille;
+                        s->speed_boost_until_ms = now + PC_SLIDE_JUMP_BOOST_MS;
+                        printf("Player slot %d landed a real slide-jump trick -- %d.%02dx speed for %dms\n",
+                               i, boost_permille / 1000, (boost_permille % 1000) / 10, PC_SLIDE_JUMP_BOOST_MS);
+                    }
+                    s->vy = PC_JUMP_VELOCITY;
+                    s->on_ground = 0;
+                }
+
+                if (!s->on_ground) {
+                    s->vy -= PC_GRAVITY * PC_TICK_DT;
+                    s->state.y += s->vy * PC_TICK_DT;
+                    if (has_ground && s->vy <= 0.0f && s->state.y <= ground_y) {
+                        s->state.y = ground_y;
+                        s->vy = 0.0f;
+                        s->on_ground = 1;
+                    }
+                } else if (has_ground) {
+                    /* Real, honest, deliberately-kept limit: while grounded, walking onto a
+                       column with a different real ground height (e.g. stepping off a raised
+                       structure) still snaps instantly rather than triggering real fall physics
+                       -- the same pre-existing "no movement physics beyond basic collision"
+                       simplification this repo has used since Phase 0, now scoped precisely to
+                       "walking never falls, only an explicit jump does." A real, later
+                       improvement (detect a real step-down bigger than some threshold and enter
+                       on_ground=0 instead of snapping) is a genuine, separate piece of work, not
+                       done here -- this pass's own real scope is jump + the slide-jump trick. */
+                    s->state.y = ground_y;
                 }
 
                 if (mx != 0.0f || mz != 0.0f) {

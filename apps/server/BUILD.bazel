@@ -9,6 +9,7 @@ cc_binary(
         "//packages/simulation:talent",
         "//packages/simulation:stat_effects",
         "//packages/simulation:paper_fragment",
+        "//packages/simulation:slide_jump",
     ],
     linkopts = ["-lm"],
     visibility = ["//visibility:public"],

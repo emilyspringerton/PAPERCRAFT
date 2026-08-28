@@ -594,6 +594,15 @@ int main(int argc, char **argv) {
         if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) move_x -= 1.0f;
         if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) move_x += 1.0f;
 
+        /* Real jump/crouch input -- held-key state, same real polling convention move_x/move_z
+           already use (not a discrete keydown event) so a held jump/crouch reads correctly every
+           real tick, matching PcUserCmdPacket's own continuous-input-stream contract. Space =
+           jump, Left Ctrl/Shift = crouch (a real slide-jump trick needs jump momentarily pressed
+           WHILE crouch is already held -- crouch first, then tap jump). */
+        unsigned int buttons = 0;
+        if (keys[SDL_SCANCODE_SPACE]) buttons |= PC_BTN_JUMP;
+        if (keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_LSHIFT]) buttons |= PC_BTN_CROUCH;
+
         if (welcomed) {
             PcUserCmdPacket cmd; memset(&cmd, 0, sizeof(cmd));
             cmd.hdr.type = PC_PACKET_USERCMD;
@@ -601,6 +610,7 @@ int main(int argc, char **argv) {
             cmd.cmd_time_ms = now;
             cmd.move_x = move_x;
             cmd.move_z = move_z;
+            cmd.buttons = buttons;
             sendto(sock, &cmd, sizeof(cmd), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
         }
 
