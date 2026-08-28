@@ -46,3 +46,18 @@ cc_test(
     ],
     linkopts = ["-lm"],
 )
+
+# talent -- the real, PARENA-compiled talent-point allocation gate, ported from the real
+# construct's own progression_try_allocate (SHANKPIT_CONSTRUCT.txt lines 867-872).
+cc_library(
+    name = "talent",
+    srcs = ["talent_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "talent_mod_test",
+    srcs = ["talent_mod_test.c"],
+    deps = [":talent"],
+)

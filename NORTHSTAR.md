@@ -212,9 +212,14 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   call a talent tree we have the bones of one in a construct." `MatchProgression`'s own
   `unspent_points`/`ability[5]` (construct lines 777-824): five real allocatable stats (move,
   vitality, handling, shield, storm per `progression_apply_bonuses`), earned via `unspent_points`
-  gained on level-up (this doc's own leveling section above). Real starting point for a
-  persistent talent/tech tree, not designed yet — the level-up mod above is the real prerequisite
-  this would build on (a tree needs real levels/points to spend before it needs a UI).
+  gained on level-up (this doc's own leveling section above). **Allocation gate shipped**: the
+  construct's own real `progression_try_allocate` gate (idx valid, has an unspent point, ability
+  not already at its own real cap of 5) is now a real PARENA mod
+  (`PARENA/stdlib/papercraft/talent_mod.prn` → `packages/simulation/talent_mod.c`,
+  `on-papercraft-can-allocate-talent`, verified via `talent_mod_test.c`,
+  `bazel test //...` green). Still not built: the actual five stat effects
+  (`progression_apply_bonuses`'s own real per-stat gameplay hooks), a real UI, and how this ties
+  into the real host game loop this repo still doesn't have.
 - **A real map editor, built in from day 0, PARENA-powered** — founder: "build the map editor in
   from day 0" / "parena powered." Not designed yet; real open question whether/how this relates
   to `WEAKNIGHT_BEDROCK_RACERS`' own same-day "map editor from day 1" note
