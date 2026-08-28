@@ -241,6 +241,21 @@ precedent) — named here as the real direction, not scoped into a build plan ye
 
 ## Real Phase 0 — "a player can log in and spawn in the real persistent city, nothing else"
 
+**Server-side Phase 0 shipped and verified (2026-08-28).** `apps/server` is real and live-tested:
+fetches the real `/chunks?scene=200&cx=0&cz=0` block data from `worldapi` at startup (real bug
+found and fixed along the way — the shared `http_client.h`'s own 8KB response buffer silently
+truncated the real ~35KB/1054-block response to 241 blocks with no error signal at all; bumped to
+128KB, verified against the real full response), verifies a real IDUNA-minted connect ticket
+(`PapercraftTicketHandler`, IDUNA commit `0b99a32`), spawns a player standing on the real solid
+surface at the real ground height derived from the actual block list (confirmed Y=65, matching
+the real chunk's own solid floor), and ticks real server-authoritative movement with real basic
+ground collision (Y re-derived from the real block data every tick, not simulated). Verified live
+end-to-end with a real UDP probe: real login → real ticket mint → real WELCOME → real movement
+(exactly 2.0 world units per 0.5s at the real 4.0 units/sec walk speed) → real Y staying locked to
+the real ground height throughout. **No client yet** — this proves the real server-side logic;
+rendering a real player standing in a real voxel city is real, separate, next work (see "Explicitly
+not scoped yet" below).
+
 Matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline (its own
 Phase 0: "a car can drive on real voxel terrain," nothing else). Grounded in a real, confirmed
 infrastructure finding, not a guess:
