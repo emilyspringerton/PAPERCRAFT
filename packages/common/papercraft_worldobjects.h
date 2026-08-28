@@ -48,10 +48,14 @@
 
 typedef struct {
     float x, y, z;   /* real world position -- y is the object's own real CENTER height (matches
-                         paper_generate_cube's own convention: the original g_test_cube_y was
-                         ground-height + half-extent), not ground height itself */
+                         paper_generate_box's own convention: the original g_test_cube_y was
+                         ground-height + half_y), not ground height itself */
     int material;    /* real PAPER_MATERIAL_* (packages/common/paper_mesh.h) */
-    float half_extent;
+    float half_x, half_y, half_z; /* real, independent per-axis half-extents (packages/common/
+                                      paper_mesh.h's own paper_generate_box) -- a uniform cube is
+                                      just half_x==half_y==half_z; a real wall-shaped slab isn't.
+                                      Closes "no non-cube base shapes (a wall segment is not
+                                      literally a cube in a real city)". */
     unsigned int seed;
 } PcWorldObjectDef;
 

@@ -91,12 +91,20 @@ static inline PaperVec3 paper_vec3(float x, float y, float z) {
     PaperVec3 v; v.x = x; v.y = y; v.z = z; return v;
 }
 
-/* paper_generate_cube: real subdivide-then-jitter mesh build. half_extent is the real cube's own
-   half-size (world units); subdiv is fragments-per-face-edge (clamped to PAPER_SUBDIV_MAX);
-   material/seed are both real inputs, not defaulted -- the same seed+params always produces the
-   exact same fragment list, verified by paper_mesh_test.c. */
-static inline void paper_generate_cube(PaperCubeMesh *mesh, float half_extent, int subdiv,
-                                        int material, unsigned int seed) {
+/* paper_generate_box: real subdivide-then-jitter mesh build, generalized to real independent
+   per-axis half-extents (half_x/half_y/half_z) -- closes "no non-cube base shapes (a wall
+   segment is not literally a cube in a real city)". A uniform cube is just half_x==half_y==half_z;
+   paper_generate_cube below is a thin wrapper kept for every existing real call site. subdiv is
+   still one real scalar controlling fragments-per-face-edge uniformly across all 6 faces --
+   real, honest limitation for a strongly non-uniform box (e.g. a real thin, wide wall slab):
+   faces along the short axis get small, dense fragments while faces along the long axis get
+   comparatively large ones, since the same subdiv count spans a very different real world
+   length. A real, later improvement would scale subdiv per-face by its own real aspect ratio;
+   not needed to prove this pass's own real point (independent per-axis sizing, not per-face
+   fragment density). material/seed are both real inputs, not defaulted -- the same seed+params
+   always produces the exact same fragment list, verified by paper_mesh_test.c. */
+static inline void paper_generate_box(PaperCubeMesh *mesh, float half_x, float half_y, float half_z,
+                                       int subdiv, int material, unsigned int seed) {
     if (subdiv < 1) subdiv = 1;
     if (subdiv > PAPER_SUBDIV_MAX) subdiv = PAPER_SUBDIV_MAX;
     memset(mesh, 0, sizeof(*mesh));
@@ -144,7 +152,7 @@ static inline void paper_generate_cube(PaperCubeMesh *mesh, float half_extent, i
                     float jitter = (paper_rand01(vseed) - 0.5f) * 2.0f * PAPER_JITTER_MAX;
                     px += normal.x * jitter; py += normal.y * jitter; pz += normal.z * jitter;
 
-                    f->corners[c] = paper_vec3(px * half_extent, py * half_extent, pz * half_extent);
+                    f->corners[c] = paper_vec3(px * half_x, py * half_y, pz * half_z);
                 }
 
                 f->center = paper_vec3(
@@ -161,6 +169,13 @@ static inline void paper_generate_cube(PaperCubeMesh *mesh, float half_extent, i
     }
 done:
     mesh->fragment_count = frag_index;
+}
+
+/* paper_generate_cube: thin wrapper over paper_generate_box for every existing real call site
+   that only ever needed a uniform cube (half_x == half_y == half_z == half_extent). */
+static inline void paper_generate_cube(PaperCubeMesh *mesh, float half_extent, int subdiv,
+                                        int material, unsigned int seed) {
+    paper_generate_box(mesh, half_extent, half_extent, half_extent, subdiv, material, seed);
 }
 
 /* paper_fragment_apply_damage: the real, host-side consequence of a hit -- calls the real

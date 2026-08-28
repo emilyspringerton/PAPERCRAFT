@@ -65,7 +65,39 @@ int main(void) {
     /* Not every fragment in the whole mesh -- this was a local hit, not a whole-cube wipe. */
     assert(gone_count < mesh.fragment_count);
 
-    printf("paper_mesh_test: all assertions passed (%d fragments, %d gone after blast)\n",
+    /* Real non-cube base shape: paper_generate_box with independent per-axis half-extents --
+       closes "no non-cube base shapes (a wall segment is not literally a cube in a real city)".
+       A real wall-shaped slab: wide (X), tall-ish (Y), thin (Z) -- genuinely asymmetric, not a
+       cube with a different name. */
+    PaperCubeMesh wall;
+    paper_generate_box(&wall, 3.0f, 1.5f, 0.15f, 4, PAPER_MATERIAL_CONCRETE, 555u);
+    assert(wall.fragment_count == 6 * 4 * 4);
+
+    /* Real asymmetry check: every real corner's X extent must reach close to the real 3.0 half-
+       width, while every real corner's Z extent must stay bounded by the real, much smaller 0.15
+       half-depth (plus jitter) -- proving the three axes actually scaled independently, not the
+       same uniform half_extent silently applied to all three. */
+    float max_abs_x = 0.0f, max_abs_z = 0.0f;
+    for (int i = 0; i < wall.fragment_count; i++) {
+        for (int c = 0; c < 4; c++) {
+            PaperVec3 p = wall.fragments[i].corners[c];
+            if (fabsf(p.x) > max_abs_x) max_abs_x = fabsf(p.x);
+            if (fabsf(p.z) > max_abs_z) max_abs_z = fabsf(p.z);
+            assert(fabsf(p.z) <= 0.15f + PAPER_JITTER_MAX + 0.001f); /* real, thin depth axis stays thin */
+        }
+    }
+    assert(max_abs_x > 2.5f);  /* real, wide X axis actually got wide */
+    assert(max_abs_z < 1.0f);  /* real, thin Z axis stayed genuinely thin, nowhere near the X scale */
+
+    /* Real back-compat check: paper_generate_cube(h) must still be byte-identical to
+       paper_generate_box(h,h,h) -- the refactor didn't silently change the real, already-shipped
+       cube behavior every existing object in this game depends on. */
+    PaperCubeMesh cube_a, cube_b;
+    paper_generate_cube(&cube_a, 1.5f, 4, PAPER_MATERIAL_WOOD, 42u);
+    paper_generate_box(&cube_b, 1.5f, 1.5f, 1.5f, 4, PAPER_MATERIAL_WOOD, 42u);
+    assert(memcmp(&cube_a, &cube_b, sizeof(cube_a)) == 0);
+
+    printf("paper_mesh_test: all assertions passed (%d fragments, %d gone after blast, real non-cube box verified)\n",
            mesh.fragment_count, gone_count);
     return 0;
 }

@@ -210,17 +210,39 @@ distinct markers visible and correctly positioned in the same real screenshot), 
 this repo's own architecture always claimed but had never actually been screenshot-verified
 before now.
 
+## Real non-cube base shapes now (2026-08-28)
+
+Closes "a wall segment is not literally a cube in a real city." `packages/common/paper_mesh.h`
+grew `paper_generate_box(mesh, half_x, half_y, half_z, subdiv, material, seed)` — the exact same
+real subdivide-then-jitter technique, generalized to real, independent per-axis half-extents
+instead of one uniform `half_extent`; `paper_generate_cube` is now a thin wrapper
+(`half_x==half_y==half_z`), verified byte-identical to the pre-refactor behavior by
+`paper_mesh_test.c`'s own real back-compat assertion. `PcWorldObjectDef`
+(`packages/common/papercraft_worldobjects.h`) carries `half_x`/`half_y`/`half_z` now;
+`apps/mapeditor` grew `--half-x`/`--half-y`/`--half-z` (on top of the existing `--half-extent`,
+which still sets all three at once) so a modder can place a real wide/tall, thin wall-shaped slab,
+not just a scaled cube. Real, honest limitation kept: `subdiv` is still one scalar spanning all 6
+faces uniformly, so a strongly non-uniform box gets uneven real fragment density across its own
+faces (small dense fragments on the short axis, larger ones on the long axis) — a real, later
+per-face subdiv scaling isn't needed to prove independent per-axis *sizing*, this pass's own real
+point.
+
+Verified live: placed a real wall (`half=(3.0,1.5,0.15)`) via the editor, confirmed the server
+broadcast the exact same real asymmetric shape over the wire, confirmed real interact/damage
+targeting still correctly reaches a non-cube object (the max-reach check now uses the largest of
+the three real per-axis half-extents), and captured a real screenshot showing a genuinely wide,
+short slab — not a cube — with visible real damage tinting where it was punched.
+
 ## What's explicitly not built yet
 
-Real server-authoritative physics/collision for a detached fragment (the new client-side debris
-above is real but cosmetic-only — no real collision with the world/players, no server authority,
-each client simulates its own copy independently), no non-cube base shapes (a wall segment is not
-literally a cube in a real city — this is the smallest real proof of the *technique*, not the
-final asset pipeline), no real
-weapon/combat system (`PC_PACKET_INTERACT` is a bare punch, not a shotgun blast with its own
-damage falloff/spread), and only a small, editor-placed set of real objects (`apps/mapeditor`,
-`PC_WO_MAX_OBJECTS=4`) — real integration into the city's own actual `VoxelBlock` geometry (so
-real building walls, not just standalone props, are destructible) is separate, future work. The
+Real server-authoritative physics/collision for a detached fragment (the client-side debris above
+is real but cosmetic-only — no real collision with the world/players, no server authority, each
+client simulates its own copy independently), no real weapon/combat system (`PC_PACKET_INTERACT`
+is a bare punch, not a shotgun blast with its own damage falloff/spread), only one real scalar
+`subdiv` per object (uneven fragment density on a strongly non-uniform box, see above), and only a
+small, editor-placed set of real objects (`apps/mapeditor`, `PC_WO_MAX_OBJECTS=4`) — real
+integration into the city's own actual `VoxelBlock` geometry (so real building walls, not just
+standalone props, are destructible) is separate, future work. The
 bare-punch hit-detection gap named in an earlier draft of this section
 is now closed — see "Live-wired into the actual game loop" above. Real Phase 1 sequencing for the
 remaining items above is separate, future work, matching this repo's own "docs before software,

@@ -45,14 +45,18 @@ static void print_usage(void) {
         "usage:\n"
         "  mapeditor list   [--file <path>]\n"
         "  mapeditor add    <x> <z> [--material paper|wood|concrete|metal] [--seed <n>]\n"
-        "                   [--half-extent <f>] [--file <path>]\n"
-        "                   [--worldapi-host <h>] [--worldapi-port <p>]\n"
+        "                   [--half-extent <f>] [--half-x <f>] [--half-y <f>] [--half-z <f>]\n"
+        "                   [--file <path>] [--worldapi-host <h>] [--worldapi-port <p>]\n"
         "  mapeditor remove <index> [--file <path>]\n"
         "\n"
         "  --file defaults to var/world/objects.dat (same real default apps/server uses).\n"
-        "  add ground-snaps the real placement Y via a live worldapi ground-height lookup at\n"
-        "  (x,z) -- refuses (fails closed) if worldapi is unreachable or that column has no\n"
-        "  real solid block, same discipline apps/server's own spawn logic already uses.\n");
+        "  --half-extent sets all three real per-axis half-extents at once (a uniform cube);\n"
+        "  --half-x/--half-y/--half-z override individually after that, so e.g.\n"
+        "  '--half-extent 1.5 --half-z 0.15' places a real wide/tall, thin wall-shaped slab --\n"
+        "  a non-cube base shape, not a scaled cube. add ground-snaps the real placement Y via a\n"
+        "  live worldapi ground-height lookup at (x,z) -- refuses (fails closed) if worldapi is\n"
+        "  unreachable or that column has no real solid block, same discipline apps/server's own\n"
+        "  spawn logic already uses.\n");
 }
 
 static int parse_material(const char *s) {
@@ -72,8 +76,8 @@ static int cmd_list(const char *path) {
     printf("Real world-objects file %s -- %d object(s):\n", path, wf.count);
     for (int i = 0; i < wf.count; i++) {
         const PcWorldObjectDef *o = &wf.objects[i];
-        printf("  [%d] pos=(%.2f,%.2f,%.2f) material=%s half_extent=%.2f seed=%u\n",
-               i, o->x, o->y, o->z, material_name(o->material), o->half_extent, o->seed);
+        printf("  [%d] pos=(%.2f,%.2f,%.2f) material=%s half=(%.2f,%.2f,%.2f) seed=%u\n",
+               i, o->x, o->y, o->z, material_name(o->material), o->half_x, o->half_y, o->half_z, o->seed);
     }
     return 0;
 }
@@ -100,7 +104,8 @@ static int cmd_remove(const char *path, int index) {
     return 0;
 }
 
-static int cmd_add(const char *path, float x, float z, int material, float half_extent,
+static int cmd_add(const char *path, float x, float z, int material,
+                    float half_x, float half_y, float half_z,
                     unsigned int seed, const char *worldapi_host, int worldapi_port) {
     PcWorldObjectFile wf;
     if (!pc_worldobjects_load(path, &wf)) {
@@ -144,9 +149,11 @@ static int cmd_add(const char *path, float x, float z, int material, float half_
     PcWorldObjectDef *def = &wf.objects[wf.count];
     def->x = x;
     def->z = z;
-    def->y = (float)ground_y + half_extent;
+    def->y = (float)ground_y + half_y; /* real center height -- ground + the real vertical half-extent */
     def->material = material;
-    def->half_extent = half_extent;
+    def->half_x = half_x;
+    def->half_y = half_y;
+    def->half_z = half_z;
     def->seed = seed;
     wf.count++;
 
@@ -154,8 +161,8 @@ static int cmd_add(const char *path, float x, float z, int material, float half_
         fprintf(stderr, "FATAL: could not save %s.\n", path);
         return 1;
     }
-    printf("Placed real object %d at (%.2f,%.2f,%.2f) material=%s half_extent=%.2f seed=%u -- saved to %s (%d object(s) total).\n",
-           wf.count - 1, def->x, def->y, def->z, material_name(material), half_extent, seed, path, wf.count);
+    printf("Placed real object %d at (%.2f,%.2f,%.2f) material=%s half=(%.2f,%.2f,%.2f) seed=%u -- saved to %s (%d object(s) total).\n",
+           wf.count - 1, def->x, def->y, def->z, material_name(material), half_x, half_y, half_z, seed, path, wf.count);
     return 0;
 }
 
@@ -191,7 +198,9 @@ int main(int argc, char **argv) {
         float x = (float)atof(argv[2]);
         float z = (float)atof(argv[3]);
         int material = PC_DEFAULT_OBJECT_MATERIAL;
-        float half_extent = PC_DEFAULT_OBJECT_HALF_EXTENT;
+        float half_x = PC_DEFAULT_OBJECT_HALF_EXTENT;
+        float half_y = PC_DEFAULT_OBJECT_HALF_EXTENT;
+        float half_z = PC_DEFAULT_OBJECT_HALF_EXTENT;
         unsigned int seed = 0;
         int seed_given = 0;
         for (int i = 4; i < argc; i++) {
@@ -203,7 +212,18 @@ int main(int argc, char **argv) {
                 seed = (unsigned int)strtoul(argv[++i], NULL, 10);
                 seed_given = 1;
             } else if (strcmp(argv[i], "--half-extent") == 0 && i + 1 < argc) {
-                half_extent = (float)atof(argv[++i]);
+                /* Sets all three real per-axis half-extents at once (a uniform cube) -- real
+                   --half-x/--half-y/--half-z below can still override individually if given
+                   AFTER this on the command line, letting a modder start from a cube and flatten
+                   just one axis into a real wall-shaped slab. */
+                float v = (float)atof(argv[++i]);
+                half_x = v; half_y = v; half_z = v;
+            } else if (strcmp(argv[i], "--half-x") == 0 && i + 1 < argc) {
+                half_x = (float)atof(argv[++i]);
+            } else if (strcmp(argv[i], "--half-y") == 0 && i + 1 < argc) {
+                half_y = (float)atof(argv[++i]);
+            } else if (strcmp(argv[i], "--half-z") == 0 && i + 1 < argc) {
+                half_z = (float)atof(argv[++i]);
             } else if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
                 snprintf(path, sizeof(path), "%s", argv[++i]);
             } else if (strcmp(argv[i], "--worldapi-host") == 0 && i + 1 < argc) {
@@ -218,7 +238,7 @@ int main(int argc, char **argv) {
                explicitly. Not cryptographic, doesn't need to be -- this is level-design data. */
             seed = (unsigned int)time(NULL) ^ (unsigned int)((x * 7919.0f) + (z * 104729.0f));
         }
-        return cmd_add(path, x, z, material, half_extent, seed, worldapi_host, worldapi_port);
+        return cmd_add(path, x, z, material, half_x, half_y, half_z, seed, worldapi_host, worldapi_port);
     }
 
     print_usage();

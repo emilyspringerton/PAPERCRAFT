@@ -391,7 +391,9 @@ int main(int argc, char **argv) {
         g_wo_file.objects[0].x = PC_DEFAULT_OBJECT_X;
         g_wo_file.objects[0].z = PC_DEFAULT_OBJECT_Z;
         g_wo_file.objects[0].material = PC_DEFAULT_OBJECT_MATERIAL;
-        g_wo_file.objects[0].half_extent = PC_DEFAULT_OBJECT_HALF_EXTENT;
+        g_wo_file.objects[0].half_x = PC_DEFAULT_OBJECT_HALF_EXTENT;
+        g_wo_file.objects[0].half_y = PC_DEFAULT_OBJECT_HALF_EXTENT;
+        g_wo_file.objects[0].half_z = PC_DEFAULT_OBJECT_HALF_EXTENT;
         g_wo_file.objects[0].seed = PC_DEFAULT_OBJECT_SEED;
         int ground_y;
         if (pw_world_ground_height_at(&g_world, (int)PC_DEFAULT_OBJECT_X, (int)PC_DEFAULT_OBJECT_Z, &ground_y)) {
@@ -407,8 +409,9 @@ int main(int argc, char **argv) {
         printf("Real world-objects file loaded from %s (%d object(s)).\n", g_world_objects_path, g_wo_file.count);
     }
     for (int i = 0; i < g_wo_file.count; i++) {
-        paper_generate_cube(&g_wo_mesh[i], g_wo_file.objects[i].half_extent, PC_WO_SUBDIV,
-                             g_wo_file.objects[i].material, g_wo_file.objects[i].seed);
+        paper_generate_box(&g_wo_mesh[i], g_wo_file.objects[i].half_x, g_wo_file.objects[i].half_y,
+                            g_wo_file.objects[i].half_z, PC_WO_SUBDIV,
+                            g_wo_file.objects[i].material, g_wo_file.objects[i].seed);
     }
     printf("Real Paper Engine: %d world object(s) live (%d fragments each) -- press E in reach to punch one.\n",
            g_wo_file.count, PC_WO_FRAGMENTS);
@@ -623,7 +626,14 @@ int main(int argc, char **argv) {
                         float dy = hit_world.y - g_wo_file.objects[o].y;
                         float dz = hit_world.z - g_wo_file.objects[o].z;
                         float dist2 = dx * dx + dy * dy + dz * dz;
-                        float max_reach = g_wo_file.objects[o].half_extent + PC_INTERACT_RADIUS + 0.5f;
+                        /* Real, conservative reach check for a real non-uniform box -- use the
+                           largest of the three real per-axis half-extents, not just one axis, so
+                           a real wide/tall wall slab's own far edge stays reachable even though
+                           its own thin axis is much smaller. */
+                        float half_max = g_wo_file.objects[o].half_x;
+                        if (g_wo_file.objects[o].half_y > half_max) half_max = g_wo_file.objects[o].half_y;
+                        if (g_wo_file.objects[o].half_z > half_max) half_max = g_wo_file.objects[o].half_z;
+                        float max_reach = half_max + PC_INTERACT_RADIUS + 0.5f;
                         if (dist2 <= max_reach * max_reach && (target == -1 || dist2 < best_dist2)) {
                             target = o;
                             best_dist2 = dist2;

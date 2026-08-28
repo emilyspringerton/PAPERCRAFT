@@ -539,7 +539,7 @@ int main(int argc, char **argv) {
        so the client can't pre-generate geometry at startup the way it used to -- each active
        object's own real mesh is generated lazily, the first time this client sees it in a real
        snapshot, then cached (g_wo_mesh_ready[]) since the server never live-reloads the
-       world-objects file mid-run, so an object's own real position/material/seed/half_extent are
+       world-objects file mid-run, so an object's own real position/material/seed/half-extents are
        effectively static for the life of one server run. Independently regenerates the identical
        real geometry from the same real seed+params the server used (verified deterministic by
        paper_mesh_test.c) -- only the server's own real per-fragment STATE crosses the wire every
@@ -760,7 +760,7 @@ int main(int argc, char **argv) {
             if (!latest_snap.world_object_active[o]) continue;
             if (!g_wo_mesh_ready[o]) {
                 const PcWorldObjectDef *def = &latest_snap.world_objects[o];
-                paper_generate_cube(&g_wo_mesh[o], def->half_extent, PC_WO_SUBDIV, def->material, def->seed);
+                paper_generate_box(&g_wo_mesh[o], def->half_x, def->half_y, def->half_z, PC_WO_SUBDIV, def->material, def->seed);
                 g_wo_mesh_ready[o] = 1;
                 /* A freshly-seen object has no real prior-frame state to diff against --
                    pre-fill so its own already-broken fragments (e.g. restored from a real
