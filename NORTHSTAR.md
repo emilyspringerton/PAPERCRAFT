@@ -204,18 +204,49 @@ distinct, entirely unnamed/unscoped future product, not this repo's own concern.
 so the multi-tenant infra note above isn't read as planning for one hypothetical second MMO —
 it's real, converging, near-term portfolio direction.
 
+## Real "bones" already in the construct, worth building from (not built yet)
+
+Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP curve above:
+
+- **A real talent/ability-point system** — founder: "a tech tree makes sense or whatever you
+  call a talent tree we have the bones of one in a construct." `MatchProgression`'s own
+  `unspent_points`/`ability[5]` (construct lines 777-824): five real allocatable stats (move,
+  vitality, handling, shield, storm per `progression_apply_bonuses`), earned via `unspent_points`
+  gained on level-up (this doc's own leveling section above). Real starting point for a
+  persistent talent/tech tree, not designed yet — the level-up mod above is the real prerequisite
+  this would build on (a tree needs real levels/points to spend before it needs a UI).
+- **A real map editor, built in from day 0, PARENA-powered** — founder: "build the map editor in
+  from day 0" / "parena powered." Not designed yet; real open question whether/how this relates
+  to `WEAKNIGHT_BEDROCK_RACERS`' own same-day "map editor from day 1" note
+  (`EMILY/BACKLOG.md` S204-08) — same idea independently named for both repos, or one shared
+  tool. Not resolved here.
+
+## The real, longer-arc modding vision
+
+Founder: *"build the parena editor in and the whole parena language so someone could mod it and
+then compile and start a server on their local and connect to it."* Names the real end state
+"mods first everything" (above) is building toward: not just this repo's own dev team writing
+PARENA mods and committing generated `.c`, but a real, embedded PARENA editor + compiler inside
+Papercraft itself, so any player/modder can write a real mod, compile it locally, and stand up
+their own real, connectable server running it — the same relationship Minecraft's own datapacks/
+mod-loader ecosystem has to the base game, but PARENA-native rather than a bolted-on scripting
+layer. A real, significant, multi-repo undertaking (PARENA's own editor is real and shipping
+independently — `PARENA/docs/NORTHSTAR_LINNEN.md`, `JEWEL`'s own Jupyter-kernel embedding
+precedent) — named here as the real direction, not scoped into a build plan yet.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled
 above). No destruction-mesh implementation — real, genuinely new engineering work, same honest
 flag `skateboard/NORTHSTAR.md`'s own repo audit already made ("no existing destructible-geometry
-system anywhere in this repo, SHANKPIT, or GFD"). No trick-input scheme, no RPG stat/class system,
-no faction/crew system, no vehicle list, no mission structure. **No quest system** — founder:
-"gfd has quests papercraft doesnt really maybe missions at some point but not to start we are
-building the sandbox to start" — GFD/DragonsNShit owns quest content in this universe; Papercraft
-starts as a pure traversal/destruction/skate sandbox (matching the "sandbox with MMO DNA"
-positioning above), missions are real but explicitly deferred, not Phase 0/1 scope. This document
-is direction and real, load-bearing technical decisions (not voxels, PARENA-mods-first, city as
-default spawn, single-node persistent online-only, sandbox-first) — not yet a phased build plan.
-A real Phase 0 (matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first"
-discipline) is the next real pass, not written here.
+system anywhere in this repo, SHANKPIT, or GFD"). No trick-input scheme, no RPG stat/class system
+beyond the real construct "bones" cited above, no faction/crew system, no vehicle list, no
+mission structure. **No quest system** — founder: "gfd has quests papercraft doesnt really maybe
+missions at some point but not to start we are building the sandbox to start" — GFD/DragonsNShit
+owns quest content in this universe; Papercraft starts as a pure traversal/destruction/skate
+sandbox (matching the "sandbox with MMO DNA" positioning above), missions are real but explicitly
+deferred, not Phase 0/1 scope. This document is direction and real, load-bearing technical
+decisions (not voxels, PARENA-mods-first, city as default spawn, single-node persistent
+online-only, sandbox-first, real XP curve) — not yet a phased build plan. A real Phase 0
+(matching `WEAKNIGHT_BEDROCK_RACERS`' own "smallest real proof point first" discipline) is the
+next real pass, not written here.

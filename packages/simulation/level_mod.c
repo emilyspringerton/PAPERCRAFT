@@ -9,7 +9,11 @@ int xp_required_for_level(int);
 int on_papercraft_level_for_xp(int, int);
 
 int xp_required_for_level(int level __attribute__((unused))) {
-    return (((level * (level + 1)) / 2) * 100);
+    if ((level <= 1)) {
+    return 0;
+    } else {
+    return (xp_required_for_level((level - 1)) + (80 + ((level - 2) * 35)));
+    }
 }
 
 int on_papercraft_level_for_xp(int level __attribute__((unused)), int total_xp __attribute__((unused))) {
