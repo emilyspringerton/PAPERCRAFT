@@ -50,7 +50,7 @@ static void print_usage(void) {
         "                   [--carve --carve-x0 <n> --carve-x1 <n> --carve-y0 <n> --carve-y1 <n>\n"
         "                    --carve-z0 <n> --carve-z1 <n>]\n"
         "                   [--file <path>] [--worldapi-host <h>] [--worldapi-port <p>]\n"
-        "  mapeditor remove <index> [--file <path>]\n"
+        "  mapeditor remove <index> [--file <path>] [--damage-file <path>]\n"
         "  mapeditor edit   <index> [--x <f>] [--y <f>] [--z <f>]\n"
         "                   [--material paper|wood|concrete|metal] [--seed <n>]\n"
         "                   [--half-extent <f>] [--half-x <f>] [--half-y <f>] [--half-z <f>]\n"
@@ -63,6 +63,14 @@ static void print_usage(void) {
         "  'mapeditor edit <index>' with no value flags just prints that object's real current\n"
         "  fields and changes nothing. Warns (doesn't block), same as add, if the edited real\n"
         "  bounding box now overlaps another object's.\n"
+        "\n"
+        "  remove shifts every real object after <index> down one slot -- if a real damage file\n"
+        "  already exists at --damage-file (default var/world/damage.dat, apps/server's own\n"
+        "  default), removing anything but the LAST object warns that those shifted objects will\n"
+        "  silently inherit the wrong real per-fragment damage state next time the server starts\n"
+        "  (apps/server restores damage BY INDEX, a real, known, not-yet-fixed limitation -- see\n"
+        "  packages/common/papercraft_worldobjects.h's own PcWorldDamageFile doc comment). Warns,\n"
+        "  doesn't block -- 'edit' never reindexes anything, so prefer it when it fits.\n"
         "\n"
         "  --file defaults to var/world/objects.dat (same real default apps/server uses).\n"
         "  --half-extent sets all three real per-axis half-extents at once (a uniform cube);\n"
@@ -109,7 +117,19 @@ static int cmd_list(const char *path) {
     return 0;
 }
 
-static int cmd_remove(const char *path, int index) {
+/* cmd_remove: real, honest reindex-desync warning added (2026-08-29) -- closes the silent half of
+   papercraft_worldobjects.h's own already-named gap ("a real, later improvement would key
+   [PcWorldDamageFile] by something stable across a real map edit that reorders/removes objects").
+   Removing anything but the LAST real object shifts every real object AFTER it down one real
+   index -- apps/server's own damage restore is purely positional (`damage.hp[o][f]` keyed by
+   slot `o`, packages/common/papercraft_worldobjects.h), so if a real damage file already exists,
+   every shifted object would silently inherit a DIFFERENT real object's own damage state on the
+   server's next start. Not fixed here (the real fix is a stable per-object ID, a real, separate,
+   cross-cutting wire-format change -- PcWorldObjectDef, PcWorldDamageFile, and PcSnapshotPacket
+   would all need it, real wire-budget accounting included) -- but the previously SILENT footgun
+   is now a real, visible warning, same "warn, don't block" policy `add`'s own AABB overlap check
+   already established. */
+static int cmd_remove(const char *path, const char *damage_path, int index) {
     PcWorldObjectFile wf;
     if (!pc_worldobjects_load(path, &wf)) {
         fprintf(stderr, "No real world-objects file at %s -- nothing to remove.\n", path);
@@ -119,6 +139,24 @@ static int cmd_remove(const char *path, int index) {
         fprintf(stderr, "Real index %d out of range -- file has %d object(s) (0..%d).\n", index, wf.count, wf.count - 1);
         return 1;
     }
+
+    int shifts = wf.count - 1 - index; /* real count of objects that will move down one index */
+    if (shifts > 0) {
+        PcWorldDamageFile damage;
+        if (pc_worldobjects_load_damage(damage_path, &damage)) {
+            fprintf(stderr,
+                "WARNING: removing real object %d will shift %d real object(s) (index %d..%d -> %d..%d)\n"
+                "  down by one, but a real damage file already exists at %s.\n"
+                "  apps/server restores per-fragment damage BY INDEX -- each shifted object will\n"
+                "  silently inherit the damage state that used to belong to the object one index\n"
+                "  above it, the next time the server starts. Real, known limitation (see this\n"
+                "  file's own header comment) -- not fixed automatically. Delete or regenerate\n"
+                "  %s if that matters for this edit, or use 'mapeditor edit' instead where\n"
+                "  possible (edit never reindexes anything). Removing anyway.\n",
+                index, shifts, index + 1, wf.count - 1, index, wf.count - 2, damage_path, damage_path);
+        }
+    }
+
     for (int i = index; i < wf.count - 1; i++) {
         wf.objects[i] = wf.objects[i + 1];
     }
@@ -336,10 +374,13 @@ int main(int argc, char **argv) {
     if (strcmp(cmd, "remove") == 0) {
         if (argc < 3) { print_usage(); return 1; }
         int index = atoi(argv[2]);
+        char damage_path[512];
+        snprintf(damage_path, sizeof(damage_path), "var/world/damage.dat"); /* same real default apps/server uses */
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) snprintf(path, sizeof(path), "%s", argv[++i]);
+            else if (strcmp(argv[i], "--damage-file") == 0 && i + 1 < argc) snprintf(damage_path, sizeof(damage_path), "%s", argv[++i]);
         }
-        return cmd_remove(path, index);
+        return cmd_remove(path, damage_path, index);
     }
 
     if (strcmp(cmd, "edit") == 0) {

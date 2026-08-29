@@ -142,7 +142,15 @@ static inline int pc_worldobjects_save(const char *path, const PcWorldObjectFile
  * something stable across a real map edit that reorders/removes objects (not needed for this
  * proof point: editing the map while an existing damage save exists is real, later, flagged
  * work, same as everywhere else in this repo that a "smallest real proof point" boundary was
- * drawn deliberately, not accidentally). */
+ * drawn deliberately, not accidentally).
+ *
+ * Two real, partial mitigations exist for this exact index-desync risk, not a full fix
+ * (2026-08-29): apps/mapeditor's own `edit` command changes an object's fields IN PLACE, at the
+ * same real index, so it never triggers this problem at all; and `remove` now warns (doesn't
+ * block) when removing anything but the LAST real object would shift others down while a real
+ * damage file already exists at the paired path, naming exactly what's about to happen instead
+ * of leaving it silent. The real, full fix (a stable per-object ID this struct doesn't have yet)
+ * remains real, separate, cross-cutting work. */
 #define PC_WD_MAGIC 0x50435744u /* "PCWD" */
 
 typedef struct {

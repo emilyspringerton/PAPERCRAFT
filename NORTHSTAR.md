@@ -259,6 +259,12 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   (`packages/common/papercraft_worldobjects.h`'s own `PcWorldDamageFile`, keyed by slot).
   Deliberately simple, not a smart re-placement: only the real fields a flag was actually given
   for change, no ground re-snap, no carve-box re-validation, real carve bounds always untouched.
+  `remove` also now warns (doesn't block) when removing anything but the LAST object would shift
+  others down an index while a real damage file already exists — `apps/server` restores per-
+  fragment damage BY INDEX, so a shifted object would otherwise silently inherit the wrong real
+  damage state on the next server start, a real, known, not-yet-fully-fixed limitation named in
+  `packages/common/papercraft_worldobjects.h`'s own doc comment (the full fix needs a stable
+  per-object ID, real, separate, cross-cutting work).
 
 ## The real, longer-arc modding vision
 
