@@ -959,6 +959,29 @@ real 5G/limited-bandwidth path, the harshest real condition this whole saga was 
 the one verification tier this environment has never been able to substitute for, and every real
 bug in this list is one that tier alone actually surfaced.
 
+**One more real, monorepo-wide side effect this same saga caused, not just a PAPERCRAFT-scoped
+bug: it broke REDGARDEN's own matchmaking.** Founder real-time: "ok somewhere along the way we
+broke redgarden matchmaking" → "probably restart the box? did anything weird happen when we did
+the networking for papercraft and bedrock racers?" → "do we have separate ports or whatever we
+need for all of these servicese" → (after a comprehensive fix) "ok redgarden is fixed". Real,
+confirmed root cause: `37-papercraft-server-firewall.sh` (step 3 above) was this session's own
+first real `sudo ufw allow` call on this box. `ufw` had evidently been inactive or non-enforcing
+before that — that first real rule (or an `ufw enable` run alongside it while troubleshooting)
+flipped it into active enforcement for the first time, which silently blocked every OTHER real
+game's port that had never been given its own explicit `allow` rule, REDGARDEN's own matchmaker/
+arena ports included, even though none of REDGARDEN's own processes ever restarted or changed. A
+reboot would NOT have fixed this — `ufw`'s own enabled-state and rule set both persist across
+reboots. Real fix: `39-restore-all-game-ports-after-papercraft-firewall-work.sh`, a comprehensive
+re-assertion of every real, currently-listening service port on the box (read live from `ss
+-tulnp`, not guessed from stale docs) as an explicit `ufw allow` rule — REDGARDEN (both lobbies +
+arena ports), redgarden-stable, ECOWAR, SHANKPIT, WEAKNIGHT_BEDROCK_RACERS, EINHORN_SURVIVAL,
+worldapi/IDUNA, plus several observed-but-not-fully-documented ports allowed defensively rather
+than left possibly blocked. Confirmed fixed by the founder. Real, general lesson for this whole
+monorepo, not just this repo: the first `ufw allow` on a box that's never enforced before is a
+real, monorepo-wide-blast-radius action, not a scoped one — every other live game's own port needs
+its own explicit rule the moment enforcement turns on, and none of them had one until this
+incident forced the question.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled
