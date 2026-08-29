@@ -499,9 +499,12 @@ internal seeding), and real, verified proof that a PARENA-compiled mod function 
 loadable at runtime (`apps/dynmod_poc`, real `dlopen`/`dlsym` against a real shared library built
 from an unmodified real mod, zero mod-file changes, zero host rebuild, proven across all three
 real I32 shapes this repo's own mods actually use — 0/1/2-argument — including a real function
-that recursively calls itself and another dynamically-loaded function correctly at runtime — a
-real, standalone, low-risk proof of the core mechanism, not yet wired into `apps/server` itself,
-see `MODDING.md`'s own updated "No dynamic loading" entry) are now real and shipped (see the
+that recursively calls itself and another dynamically-loaded function correctly at runtime, and
+including a real minimal manifest mode proving multiple distinct real mods (`libxp_award_mod.so`
+and `liblevel_mod.so`) load and run together inside a single process at once, not just one mod
+per process — a real, standalone, low-risk proof of the core mechanism, not yet wired into
+`apps/server` itself, see `MODDING.md`'s own updated "No dynamic loading" entry) are now real and
+shipped (see the
 sections above) — the
 full embedded, in-game PARENA editor/modding toolchain (a real, no-rebuild-needed, in-game
 version of the modding pipeline built on top of that now-proven mechanism; `MODDING.md`'s own

@@ -230,10 +230,24 @@ asserts, not approximately.
   symbols from a `linkshared` output — `alwayslink = True` on the underlying `cc_library` is the
   real, standard Bazel fix (a real no-op for `apps/server`'s own existing static link, which
   already references the functions directly). A plain `bazel build //...`, no special flags,
-  reproduces the real proof for both `.so` targets. What this does NOT yet prove: a manifest
-  format, multiple mods loaded together, real error handling for a bad/missing mod at runtime, a
-  non-I32 (e.g. `Bool`) argument or return shape, or an actual call site in `apps/server` that
-  uses a dynamically-loaded function instead of a statically-linked one — all real, separate, next
+  reproduces the real proof for both `.so` targets. Also now real and verified: `apps/dynmod_poc`
+  has a second mode, invoked with a single manifest-file argument, that reads a real minimal
+  pipe-delimited manifest (`so_path|function|expected[|arg1[|arg2]]`, see
+  `apps/dynmod_poc/testdata/manifest.txt` for a real, checked-in example) and dlopens every
+  distinct `.so` the manifest names exactly once (cached by path), then dlsyms and calls every
+  listed function — proving real, distinct PARENA-compiled mods (`libxp_award_mod.so` and
+  `liblevel_mod.so`) coexist loaded together inside a *single process's own address space* at the
+  same time, not just one mod per process. Verified live: a real 4-line manifest spanning both
+  `.so` files and all three real function shapes runs clean (`2 distinct .so file(s) loaded
+  together in one process, 4 call(s) checked, 4 passed, 0 failed`), and a real deliberately-broken
+  manifest (a missing `.so`, a missing function, a wrong expected value) reports each real failure
+  per line, keeps going, and exits non-zero — real, useful *tool* behavior on a bad mod, though
+  still not a designed *server* contract for what should happen at startup when a real mod is
+  missing or broken (see below). What this does NOT yet prove: a manifest format `apps/server`
+  itself understands, a designed error-handling *policy* for a bad/missing mod at real server
+  startup (as opposed to this tool's own per-line report-and-continue behavior), a non-I32 (e.g.
+  `Bool`) argument or return shape, or an actual call site in `apps/server` that uses a
+  dynamically-loaded function instead of a statically-linked one — all real, separate, next
   steps toward closing this gap for real, not attempted here.
 - **No embedded, in-game PARENA editor.** `NORTHSTAR.md`'s own "The real, longer-arc modding
   vision" section names the actual end state the founder described — a real PARENA editor +

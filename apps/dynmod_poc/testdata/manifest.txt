@@ -1,0 +1,7 @@
+# Real minimal manifest for apps/dynmod_poc's own multi-mod run mode.
+# Format: so_path|function|expected[|arg1[|arg2]]  (blank lines and # comments skipped)
+# Paths are relative to the PAPERCRAFT repo root, matching a real `bazel build //...` layout.
+bazel-bin/packages/simulation/libxp_award_mod.so|on_papercraft_xp_for_object_destroyed|60
+bazel-bin/packages/simulation/liblevel_mod.so|xp_required_for_level|195|3
+bazel-bin/packages/simulation/liblevel_mod.so|on_papercraft_level_for_xp|2|1|100
+bazel-bin/packages/simulation/liblevel_mod.so|xp_required_for_level|0|1
