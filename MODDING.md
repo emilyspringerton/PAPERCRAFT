@@ -204,10 +204,28 @@ asserts, not approximately.
 
 ## What's honestly not here yet
 
-- **No dynamic loading.** A new mod means editing three files in `apps/server`'s own source tree
-  and rebuilding the binary — this is "fork and recompile" modding, not "drop a file in a mods/
-  folder." A real plugin ABI (a manifest, `dlopen`, a fixed set of named hook points the server
-  scans and calls without a rebuild) is real, substantially separate work, not attempted here.
+- **No dynamic loading in `apps/server` itself.** A new mod still means editing three files in
+  `apps/server`'s own source tree and rebuilding the binary — this is "fork and recompile"
+  modding, not "drop a file in a mods/ folder." A real plugin ABI (a manifest, a fixed set of
+  named hook points the server scans and calls without a rebuild) is real, substantially separate
+  work, not attempted here. What IS now real and verified (2026-08-29): the underlying *mechanism*
+  works. `apps/dynmod_poc` — a real, standalone, checked-in tool, deliberately not wired into
+  `apps/server` — `dlopen`s a real shared library built from `packages/simulation/xp_award_mod.c`
+  (the exact same real, unmodified generated C already statically linked into the game, built
+  instead as `packages/simulation/libxp_award_mod.so`, `linkshared = True`), `dlsym`s the real
+  exported function by name, calls it, and gets the exact real expected result (`60`) — proving a
+  real PARENA-compiled mod function (real I32-scalar-only C, VS0's own real ABI) can be loaded
+  and called at *runtime*, with zero changes to the `.prn` source and zero host rebuild. Real
+  Bazel gotcha found and fixed along the way, not glossed over: Bazel's default `cc_binary` link
+  step wraps its own object-file inputs in `-Wl,--start-lib`/`--end-lib` (gold linker
+  archive-style resolution), which silently drops an otherwise-unreferenced object file's own
+  symbols from a `linkshared` output — `alwayslink = True` on the underlying `cc_library` is the
+  real, standard Bazel fix (a real no-op for `apps/server`'s own existing static link, which
+  already references the function directly). A plain `bazel build //...`, no special flags,
+  reproduces the real proof. What this does NOT yet prove: a manifest format, multiple mods
+  loaded together, real error handling for a bad/missing mod at runtime, or an actual call site
+  in `apps/server` that uses a dynamically-loaded function instead of a statically-linked one —
+  all real, separate, next steps toward closing this gap for real, not attempted here.
 - **No embedded, in-game PARENA editor.** `NORTHSTAR.md`'s own "The real, longer-arc modding
   vision" section names the actual end state the founder described — a real PARENA editor +
   compiler *embedded inside PAPERCRAFT itself*, so a player mods without ever leaving the game or

@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 # level -- the real, PARENA-compiled RPG level-for-XP decision logic (this repo's own first real
 # "mods first everything" slice, matching NORTHSTAR.md's own citation of
@@ -106,6 +106,15 @@ cc_library(
     name = "xp_award",
     srcs = ["xp_award_mod.c"],
     hdrs = ["parena_runtime.h"],
+    # alwayslink: real, standard Bazel mechanism forcing the linker to keep this library's own
+    # object file (and every real symbol in it) even when nothing in the link directly
+    # references it -- needed for :libxp_award_mod.so below (apps/server's own real static link
+    # already references on_papercraft_xp_for_object_destroyed directly, so this is a real no-op
+    # there, not a behavior change). Found live: Bazel's default cc_binary link wraps object
+    # files in -Wl,--start-lib/--end-lib (gold linker archive-style symbol resolution), which
+    # silently drops an unreferenced .o's own symbols from a linkshared output entirely --
+    # alwayslink is the real, intended fix for exactly this shape of problem.
+    alwayslink = True,
     visibility = ["//visibility:public"],
 )
 
@@ -114,6 +123,32 @@ cc_test(
     srcs = ["xp_award_mod_test.c"],
     deps = [":xp_award"],
 )
+
+# libxp_award_mod.so -- the EXACT same real, unmodified generated C as :xp_award above, built as
+# a real shared library instead of statically linked -- real, checked-in evidence for
+# apps/dynmod_poc's own dlopen/dlsym proof of concept (PAPERCRAFT/MODDING.md's own "no dynamic
+# loading" gap). Not used by apps/server (which still statically links :xp_award, unchanged, for
+# real production stability) -- this is a real, deliberately separate build product proving the
+# mechanism, not a production integration.
+cc_binary(
+    name = "libxp_award_mod.so",
+    deps = [":xp_award"],
+    linkshared = True,
+    linkopts = ["-Wl,--export-dynamic"],
+    visibility = ["//visibility:public"],
+)
+# Real debugging note, not glossed over: this target's own real link command does carry Bazel's
+# default -Wl,-S (strip all symbols, driven by the global --strip flag, default "sometimes"), and
+# an early real hypothesis was that this was the blocker -- confirmed live it is NOT: -Wl,-S
+# strips the real static/debug symbol table but leaves a shared library's own real DYNAMIC symbol
+# table (.dynsym, what dlsym() actually reads) intact, verified by comparing `readelf -sW` output
+# with and without an explicit `--strip=never` override (identical, both show the real symbol).
+# The actual real blocker, found by comparing the object file's own real symbol table (correct,
+# GLOBAL DEFAULT) against the final linked .so's own (missing): Bazel's default cc_binary link
+# wraps its own object-file inputs in -Wl,--start-lib/--end-lib (gold linker archive-style
+# resolution), which drops a real, otherwise-unreferenced .o's own symbols from a `linkshared`
+# output entirely -- exactly what `alwayslink = True` on :xp_award above is the real, standard
+# Bazel fix for. A plain `bazel build //...` (no special flags) is enough.
 
 # interact_falloff -- the real, PARENA-compiled interact damage falloff-by-distance decision,
 # closing paper_mesh.h's own honestly-deferred gap ("uniform per-fragment for this first real
