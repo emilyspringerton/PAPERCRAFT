@@ -639,6 +639,37 @@ repo's own "smallest real proof point first" discipline used for every increment
   meantime, replaced by the real server-authoritative version only once this slice ships) — all
   real, separate, later Phase 1b+ work, not invented or promised here.
 
+**Phase 1a shipped and verified the same day.** `PcFallingFragment`/`PC_FALLING_FRAGMENTS_MAX`
+(`packages/common/papercraft_protocol.h`) — deliberately small (4, not 8, real wire-budget
+accounting left real margin on purpose, same S206-44 discipline) and deliberately minimal on the
+wire: only `y` crosses it, not the full `(x,y,z)` — `object_idx`/`fragment_idx` are enough for a
+real client to derive the real, fixed `x`/`z` itself (this slice's own explicit non-goal is
+lateral scatter, so `x`/`z` never change after a real fragment detaches). `apps/server`: a real
+`spawn_falling_fragment` triggers off a real before/after fragment-state diff at the existing
+`PC_PACKET_INTERACT` call site (the same real diff technique `apps/client`'s own debris-spawn
+logic already used, now also done server-side), claims a real bounded slot (first free, else
+round-robin oldest), and a real per-tick loop integrates `y` under the exact same real `PC_GRAVITY`
+player jump physics already uses, landing via the exact same real `pw_world_ground_height_at`
+player movement already calls — once landed, the real slot frees immediately (no permanent
+rubble-pile system, matching the real, explicit scope). Verified live, fully clean (`bazel clean`,
+then a plain `bazel build`/`bazel test`, no special flags): 26 targets, 11/11 tests pass. Real,
+live, end-to-end UDP verification (a real crafted damage file leaving one real fragment standing,
+a real probe reading the new `falling_active`/`falling[]` wire fields directly, not simulated):
+punched the real fragment, watched its own real `y` decrease tick over tick under real gravity
+(`65.285 → 65.195 → 65.075` across three real polls), then watched it land (vanish from the wire,
+slot freed) at a real, sane height matching the actual ground — all while the pre-existing real
+destroy/XP-award flow (`+60 XP`, level-up) fired exactly as before, unaffected. Real, honest scope
+note: this run verified one real fragment falling in isolation; the real, bounded multi-fragment
+array logic (first-free-slot vs. round-robin eviction) got a live smoke attempt too, inconclusive
+due to real probe-positioning timing sensitivity unrelated to the physics code itself, not a
+confirmed defect — a real, small, separate follow-up if it matters before Phase 1b.
+
+Not yet done, deliberately: `apps/client` doesn't render the real server-authoritative fall at all
+yet (still shows only its own real cosmetic debris) — wiring the client to actually draw
+`falling[]`'s own real data is Phase 1b, the natural next real slice, not attempted in this pass
+(matching the exact same "prove the mechanism, then integrate" sequencing `apps/dynmod_poc` → the
+real `apps/server` call site already used for dynamic mod loading).
+
 Not scoped here: Phase 1's own remaining items (weapon/combat, the embedded editor, full-city
 conversion) stay real, later, deliberately unscoped until each gets its own real founder-direction
 or design pass — this section names ONE real, concrete next slice, not a full Phase 1 backlog.

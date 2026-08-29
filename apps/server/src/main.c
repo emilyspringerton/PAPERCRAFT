@@ -113,6 +113,59 @@ static int g_wo_destroyed_awarded[PC_WO_MAX_OBJECTS]; /* real, per-object "alrea
                                                            could re-earn real XP by re-punching an
                                                            already-destroyed object every tick */
 
+/* g_falling -- real Phase 1a server-authoritative fragment physics state (NORTHSTAR.md's own
+   "Real Phase 1" section). Server-internal only -- NOT the wire shape (PcFallingFragment,
+   papercraft_protocol.h, only ever carries y; x/z/vy are real, pure server bookkeeping the client
+   never needs, since this real first slice's own explicit non-goal is lateral scatter -- x/z
+   never move after a real fragment detaches). */
+typedef struct {
+    int active;
+    int object_idx;
+    int fragment_idx;
+    float x, y, z;
+    float vy;
+} PcServerFallingFragment;
+static PcServerFallingFragment g_falling[PC_FALLING_FRAGMENTS_MAX];
+static int g_falling_next_evict = 0; /* real, simple round-robin eviction cursor -- used only when
+                                         every real slot is already active; a genuinely new real
+                                         detach event always wins a free slot first if one exists */
+
+/* spawn_falling_fragment: real Phase 1a trigger -- called once per real fragment that JUST
+   transitioned to PAPER_STATE_GONE (the caller already diffed before/after state to know exactly
+   which ones, same real technique apps/client's own debris-spawn diff logic already uses).
+   Computes the real, fixed world-space detach position (object's own real broadcast position +
+   this fragment's own real local center -- the exact same real computation
+   spawn_debris_for_fragment already does client-side) and claims a real, bounded slot: the first
+   free one, or -- only if all PC_FALLING_FRAGMENTS_MAX are already active -- the real, simple
+   round-robin oldest one. A real, deliberately small cap (see its own doc comment) means eviction
+   is a real, live possibility under real, sustained destruction, not just a theoretical case. */
+static void spawn_falling_fragment(int object_idx, int fragment_idx) {
+    if (object_idx < 0 || object_idx >= g_wo_file.count) return;
+    if (fragment_idx < 0 || fragment_idx >= g_wo_mesh[object_idx].fragment_count) return;
+
+    PaperFragment *f = &g_wo_mesh[object_idx].fragments[fragment_idx];
+    float wx = g_wo_file.objects[object_idx].x + f->center.x;
+    float wy = g_wo_file.objects[object_idx].y + f->center.y;
+    float wz = g_wo_file.objects[object_idx].z + f->center.z;
+
+    int slot = -1;
+    for (int i = 0; i < PC_FALLING_FRAGMENTS_MAX; i++) {
+        if (!g_falling[i].active) { slot = i; break; }
+    }
+    if (slot < 0) {
+        slot = g_falling_next_evict;
+        g_falling_next_evict = (g_falling_next_evict + 1) % PC_FALLING_FRAGMENTS_MAX;
+    }
+
+    g_falling[slot].active = 1;
+    g_falling[slot].object_idx = object_idx;
+    g_falling[slot].fragment_idx = fragment_idx;
+    g_falling[slot].x = wx;
+    g_falling[slot].y = wy;
+    g_falling[slot].z = wz;
+    g_falling[slot].vy = 0.0f;
+}
+
 typedef struct {
     int active;
     PcPlayerState state;
@@ -964,9 +1017,27 @@ int main(int argc, char **argv) {
                         PaperVec3 hit_local = paper_vec3(hit_world.x - g_wo_file.objects[target].x,
                                                           hit_world.y - g_wo_file.objects[target].y,
                                                           hit_world.z - g_wo_file.objects[target].z);
+
+                        /* Real Phase 1a: snapshot fragment states BEFORE damage so we can tell
+                           exactly which real fragments transitioned to GONE this hit --
+                           paper_mesh_damage_radius only returns a real count, not indices, same
+                           real "diff before vs after" technique apps/client's own debris-spawn
+                           logic already uses, now also done server-side for the real,
+                           authoritative version. */
+                        unsigned char before_state[PC_WO_FRAGMENTS];
+                        for (int f = 0; f < g_wo_mesh[target].fragment_count && f < PC_WO_FRAGMENTS; f++) {
+                            before_state[f] = (unsigned char)g_wo_mesh[target].fragments[f].state;
+                        }
+
                         int newly_gone = paper_mesh_damage_radius(&g_wo_mesh[target], hit_local, PC_INTERACT_RADIUS, PC_INTERACT_DAMAGE);
                         if (newly_gone > 0) {
                             printf("Player slot %d punched world object %d -- %d fragment(s) broke off.\n", i, target, newly_gone);
+                            for (int f = 0; f < g_wo_mesh[target].fragment_count && f < PC_WO_FRAGMENTS; f++) {
+                                if (before_state[f] != PAPER_STATE_GONE &&
+                                    g_wo_mesh[target].fragments[f].state == PAPER_STATE_GONE) {
+                                    spawn_falling_fragment(target, f);
+                                }
+                            }
                         }
 
                         /* Real "destroyed a world object" event -- packages/simulation/xp_award_mod.c
@@ -1162,6 +1233,30 @@ int main(int argc, char **argv) {
                 save_world_damage();
             }
 
+            /* Real Phase 1a per-tick integration -- server-authoritative fragment physics
+               (NORTHSTAR.md's own "Real Phase 1" section). Vertical-only: real gravity
+               (PC_GRAVITY, the exact same real constant player jump physics already uses, not
+               reinvented), real ground-height landing detection via the exact same real
+               pw_world_ground_height_at player movement already calls every tick. Once landed, a
+               real fragment's own slot frees immediately (set active=0) -- Phase 1a's own real,
+               explicit scope is proving the fall, not a permanent rubble-pile system. */
+            for (int fi = 0; fi < PC_FALLING_FRAGMENTS_MAX; fi++) {
+                if (!g_falling[fi].active) continue;
+                g_falling[fi].vy -= PC_GRAVITY * PC_TICK_DT;
+                g_falling[fi].y += g_falling[fi].vy * PC_TICK_DT;
+                int ground_y_i;
+                int has_ground = pw_world_ground_height_at(&g_world, (int)(g_falling[fi].x + 0.5f),
+                                                             (int)(g_falling[fi].z + 0.5f), &ground_y_i);
+                if (has_ground && g_falling[fi].y <= (float)ground_y_i) {
+                    g_falling[fi].active = 0;
+                }
+                /* Real, honest edge case, not a special case invented here: no real ground data
+                   at this column (e.g. a fragment detached near a real chunk-grid boundary) keeps
+                   the real fragment falling under real gravity with no floor to catch it -- the
+                   exact same real "no floor, keep falling" contract player movement's own real
+                   physics already uses. */
+            }
+
             /* Real snapshot broadcast to every active real player. */
             PcSnapshotPacket snap;
             memset(&snap, 0, sizeof(snap));
@@ -1184,6 +1279,16 @@ int main(int argc, char **argv) {
                     for (int f = 0; f < g_wo_mesh[o].fragment_count && f < PC_WO_FRAGMENTS; f++) {
                         pc_wo_state_pack(snap.world_object_state[o], f, g_wo_mesh[o].fragments[f].state);
                     }
+                }
+            }
+            /* Real Phase 1a broadcast -- only y crosses the wire (see PcFallingFragment's own doc
+               comment for why x/z don't need to). */
+            for (int fi = 0; fi < PC_FALLING_FRAGMENTS_MAX; fi++) {
+                snap.falling_active[fi] = (unsigned char)g_falling[fi].active;
+                if (g_falling[fi].active) {
+                    snap.falling[fi].object_idx = (unsigned char)g_falling[fi].object_idx;
+                    snap.falling[fi].fragment_idx = (unsigned char)g_falling[fi].fragment_idx;
+                    snap.falling[fi].y = g_falling[fi].y;
                 }
             }
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {

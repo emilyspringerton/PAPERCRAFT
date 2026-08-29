@@ -47,10 +47,16 @@ Section 206 for the full session-by-session build log with commit hashes and App
 **Not yet real**: an embedded in-game PARENA editor (the modding pipeline above still needs a
 second repo — `scripts/build-parena.sh` at least automates building it — and a host rebuild for
 any *new* mod call site, though one existing call site can already swap mods without a rebuild,
-see above), a graphical/live-server map editor, server-authoritative fragment physics, and
-full-city destructibility (two real wall structures, each a precise multi-box L-shape, are carved
-out today, not the whole city — the wire budget is measurably roomier than it was but still
-doesn't support that at full scale). Nothing here is claimed as done that isn't.
+see above), a graphical/live-server map editor, and full-city destructibility (two real wall
+structures, each a precise multi-box L-shape, are carved out today, not the whole city — the wire
+budget is measurably roomier than it was but still doesn't support that at full scale). Nothing
+here is claimed as done that isn't.
+
+**Server-authoritative fragment physics has a real first slice now** (`NORTHSTAR.md`'s own "Real
+Phase 1" section): a real, small, bounded set of just-detached fragments fall under real gravity
+and land at the real ground height, server-side and broadcast over the wire — verified live via a
+real UDP probe reading the actual packet fields. `apps/client` doesn't render this yet (still
+shows only its own older, cosmetic debris) — that's the deliberate next slice, not this one.
 
 ## Quick start
 

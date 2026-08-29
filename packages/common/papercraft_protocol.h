@@ -285,6 +285,41 @@ typedef struct {
  * specifically to keep this budget real and honest -- chunk-local block coordinates are always
  * genuinely small (0..15 for X/Z, comfortably under 255 for Y), so the wider type would have been
  * pure real waste broadcast every snapshot for no real benefit. */
+/* PcFallingFragment / PC_FALLING_FRAGMENTS_MAX -- real Phase 1a server-authoritative fragment
+ * physics (NORTHSTAR.md's own "Real Phase 1" section, 2026-08-29): the real, deliberately narrow
+ * first slice -- vertical-only motion for a real, small, bounded set of recently-detached
+ * fragments, no lateral scatter, no rotation, no fragment-fragment/player collision (all real,
+ * honest, explicitly-named non-goals, not oversights).
+ *
+ * Real, bounded cap (`PC_FALLING_FRAGMENTS_MAX`), same "small, bounded cap" precedent
+ * `PC_MAX_PLAYERS`/`PC_WO_MAX_OBJECTS` already set -- apps/server's own real, simple eviction
+ * policy (first free slot, else round-robin oldest) is documented at its own real call site, not
+ * here.
+ *
+ * Real, minimal wire shape: only `y` crosses the wire, not the full real (x,y,z) position --
+ * `object_idx`/`fragment_idx` are enough for the client to derive the real, FIXED x/z itself (the
+ * object's own broadcast position + that fragment's own real local center, the exact same real
+ * computation apps/client's own spawn_debris_for_fragment already does), since this real slice's
+ * own explicit non-goal is "no lateral scatter" -- x/z never change after the real fragment
+ * detaches, only y does under real gravity. A landed real fragment is simply evicted (its own
+ * `PC_FALLING_FRAGMENTS_MAX` slot's `falling_active[]` flag goes back to 0), not kept broadcasting
+ * a real resting position forever -- Phase 1a's own real job is proving the fall, not a permanent
+ * rubble-pile system (real, separate, later work if ever wanted).
+ *
+ * `fragment_idx` fits a real `unsigned char` (0..`PC_WO_FRAGMENTS`-1, 96 today, comfortably under
+ * 255); `object_idx` likewise (0..`PC_WO_MAX_OBJECTS`-1, 8 today). */
+#define PC_FALLING_FRAGMENTS_MAX 4 /* real, deliberately small for this real first slice -- real
+    wire-budget accounting (see the actual measured sizeof(PcSnapshotPacket) this change produces)
+    left real margin on purpose, matching S206-44's own "not maxed to the exact byte" discipline,
+    not just "whatever number fits." Raising it later is real, separate, easy, bounded work once
+    this real first slice earns it. */
+
+typedef struct {
+    unsigned char object_idx;
+    unsigned char fragment_idx;
+    float y;
+} PcFallingFragment;
+
 typedef struct {
     PcHeader hdr;
     unsigned int server_tick;
@@ -296,6 +331,8 @@ typedef struct {
         PAPER_STATE_* per fragment, 2 bits each -- pc_wo_state_pack/pc_wo_state_unpack
         (papercraft_worldobjects.h) are the real, only sanctioned way to read/write this, not a
         direct index (the real fragment-to-bit mapping isn't 1:1 with the byte array anymore). */
+    unsigned char falling_active[PC_FALLING_FRAGMENTS_MAX];
+    PcFallingFragment falling[PC_FALLING_FRAGMENTS_MAX];
 } PcSnapshotPacket;
 
 #endif
