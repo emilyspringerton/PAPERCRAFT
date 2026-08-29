@@ -15,13 +15,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <SDL2/SDL.h>
-#include <GL/gl.h>
-#include <GL/glu.h>
-
+/* Real Windows ordering fix (2026-08-29, real cross-platform client/mapeditor CI): this _WIN32
+   block must come BEFORE any include that itself drags in <windows.h> (mingw's own <GL/gl.h>
+   does) -- winsock2.h has to be the first Windows sockets header seen, or windows.h's own
+   default winsock.h include wins first and every winsock2-only symbol below breaks, plus a real
+   #warning ("Please include winsock2.h before windows.h") on every build. This exact ordering bug
+   was real and live in this file already, just never actually compiled for Windows before this
+   task -- raw-gcc compile-checks this session ran previously were always native Linux gcc. */
 #ifdef _WIN32
-    #include <windows.h>
     #include <winsock2.h>
+    #include <windows.h>
     #include <ws2tcpip.h>
     #pragma comment(lib, "ws2_32.lib")
 #else
@@ -31,6 +34,20 @@
     #include <unistd.h>
     #include <fcntl.h>
     #include <netdb.h>
+#endif
+
+#include <SDL2/SDL.h>
+#if defined(__APPLE__)
+    /* Real macOS portability fix (2026-08-29, real cross-platform client/mapeditor CI): macOS's
+       own OpenGL framework headers live at OpenGL/gl.h + OpenGL/glu.h, not the Linux/mingw-style
+       GL/gl.h + GL/glu.h path this file always used before -- both are still real and present
+       (deprecated since 10.14, not removed) on the real macos-latest GitHub Actions runner this
+       repo's own CI now builds on, linked via `-framework OpenGL` instead of `-lGL -lGLU`. */
+    #include <OpenGL/gl.h>
+    #include <OpenGL/glu.h>
+#else
+    #include <GL/gl.h>
+    #include <GL/glu.h>
 #endif
 
 #include "../../../packages/common/http_client.h"
@@ -690,7 +707,7 @@ int main(int argc, char **argv) {
     PcConnectPacket connect_pkt; memset(&connect_pkt, 0, sizeof(connect_pkt));
     connect_pkt.hdr.type = PC_PACKET_CONNECT;
     memcpy(connect_pkt.ticket, ticket, PC_TICKET_TOTAL_LEN);
-    sendto(sock, &connect_pkt, sizeof(connect_pkt), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    sendto(sock, (const char *)&connect_pkt, sizeof(connect_pkt), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
     printf("CONNECT sent to %s:%d, retrying until WELCOME lands...\n", server_host, server_port);
 
     glEnable(GL_DEPTH_TEST);
@@ -740,7 +757,7 @@ int main(int argc, char **argv) {
                     req.hdr.type = PC_PACKET_ALLOCATE_TALENT;
                     req.hdr.sequence = ++allocate_seq;
                     req.ability_index = (unsigned char)ability_idx;
-                    sendto(sock, &req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+                    sendto(sock, (const char *)&req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
                 }
                 /* Real "punch/interact" -- E, one real request per keypress. The server derives
                    the real hit point from the player's own position+yaw; this just asks. */
@@ -748,14 +765,14 @@ int main(int argc, char **argv) {
                     PcInteractPacket req; memset(&req, 0, sizeof(req));
                     req.hdr.type = PC_PACKET_INTERACT;
                     req.hdr.sequence = ++allocate_seq;
-                    sendto(sock, &req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+                    sendto(sock, (const char *)&req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
                 }
             }
         }
 
         unsigned int now = now_ms();
         if (!welcomed && !reject_reason[0] && now - last_connect_retry_ms >= 500) {
-            sendto(sock, &connect_pkt, sizeof(connect_pkt), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+            sendto(sock, (const char *)&connect_pkt, sizeof(connect_pkt), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
             last_connect_retry_ms = now;
         }
 
@@ -827,7 +844,7 @@ int main(int argc, char **argv) {
             cmd.move_x = move_x;
             cmd.move_z = move_z;
             cmd.buttons = buttons;
-            sendto(sock, &cmd, sizeof(cmd), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+            sendto(sock, (const char *)&cmd, sizeof(cmd), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
         }
 
         if (reject_reason[0]) {

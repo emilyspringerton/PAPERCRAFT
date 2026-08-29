@@ -1,0 +1,257 @@
+name: PAPERCRAFT CI
+
+# Founder real-time, 2026-08-29: "make sure we have the proper clients uploading as artifacts" ->
+# "mac linux windows" -> "include the map editor". Real, bounded scope: apps/client + apps/mapeditor
+# built and uploaded as CI artifacts on all three real desktop platforms. apps/server deliberately
+# NOT included here -- it's POSIX-only by design (packages/common/papercraft_persist.h's own doc
+# comment: "the game server has no Windows branch anywhere else in this codebase either"), runs on
+# this monorepo's own Linux host, and isn't something a player installs -- same real "server vs.
+# distributed client" split SHANKPIT's own release.yml already draws (Windows CLIENT + Linux SERVER
+# only, no Windows server, no Mac anything). Release automation (auto-tag, GitHub Releases, matching
+# SHANKPIT's/PITVIPER's own "auto release non pre release" precedent) is deliberately NOT attempted
+# here -- the real ask was "uploading as artifacts", not "cut a release"; whether PAPERCRAFT is a
+# real release track yet (PITVIPER's own workflow draws that exact distinction against PARENA,
+# still pre-1.0) is a separate, later founder call, not decided here.
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  # Scoped per-workflow-file, not shared with any sibling workflow -- SHANKPIT's own release.yml
+  # doc comment names a real, previously-live bug where two workflows sharing one concurrency group
+  # key raced each other and silently starved one of them. PAPERCRAFT only has this one workflow
+  # today, but the naming precedent is cheap insurance against that exact class of bug recurring
+  # if a second workflow file is ever added here.
+  group: papercraft-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Real Bazel test gate, run once, on Linux only -- this repo's own actual build system
+  # (BUILD.bazel everywhere) and actual test suite (bazel test //...), never exercised in CI
+  # before this workflow existed. The three platform build jobs below deliberately do NOT use
+  # Bazel themselves (no cross-compiling or macOS Bazel toolchain set up here, a real, separate,
+  # much bigger undertaking) -- they use raw compiler invocations mirroring each target's own
+  # BUILD.bazel srcs/deps/linkopts exactly, the same real pattern SHANKPIT's/PITVIPER's own CI
+  # already uses for their own Windows cross-builds. This job is the one real place CI actually
+  # proves the source tree is correct before any platform spends time packaging a binary from it.
+  test:
+    name: 🧪 Bazel Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bazelbuild/setup-bazelisk@v3
+
+      - name: bazel test //...
+        shell: bash
+        run: |
+          set -euo pipefail
+          bazel test //...
+
+  build_linux:
+    name: 🐧 Build Linux Client + Map Editor
+    runs-on: ubuntu-latest
+    needs: [test]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL2 + OpenGL dev packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libgl-dev libglu1-mesa-dev
+
+      - name: Build papercraft_client (Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc apps/client/src/main.c packages/simulation/paper_fragment_mod.c \
+            -o papercraft_client_linux \
+            -O2 \
+            -I. -Ipackages/common -Ipackages/simulation \
+            -lSDL2 -lGL -lGLU -lm
+          echo "Build OK: $(ls -lh papercraft_client_linux)"
+
+      - name: Build mapeditor (Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc apps/mapeditor/src/main.c \
+            -o mapeditor_linux \
+            -O2 \
+            -I. -Ipackages/common \
+            -lm
+          echo "Build OK: $(ls -lh mapeditor_linux)"
+
+      - name: Bundle Linux artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p PAPERCRAFT_Linux
+          cp papercraft_client_linux PAPERCRAFT_Linux/
+          cp mapeditor_linux PAPERCRAFT_Linux/
+          chmod +x PAPERCRAFT_Linux/papercraft_client_linux PAPERCRAFT_Linux/mapeditor_linux
+          printf '%s\n' "#!/usr/bin/env bash" "exec \"\$(dirname \"\$0\")/papercraft_client_linux\" \"\$@\"" > PAPERCRAFT_Linux/PLAY.sh
+          chmod +x PAPERCRAFT_Linux/PLAY.sh
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: papercraft-linux-${{ github.run_number }}-${{ github.sha }}
+          path: PAPERCRAFT_Linux/
+          if-no-files-found: error
+
+  build_windows:
+    name: 🪟 Build Windows Client + Map Editor
+    runs-on: ubuntu-latest
+    needs: [test]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mingw-w64 cross toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 zip wget
+
+      - name: Fetch SDL2 mingw devel package
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf sdl2_mingw SDL2-2.30.10 SDL2-devel-2.30.10-mingw.tar.gz || true
+          wget -q --retry-connrefused --tries=3 \
+            https://github.com/libsdl-org/SDL/releases/download/release-2.30.10/SDL2-devel-2.30.10-mingw.tar.gz
+          tar xzf SDL2-devel-2.30.10-mingw.tar.gz
+          mv SDL2-2.30.10/x86_64-w64-mingw32 ./sdl2_mingw
+
+      - name: Build papercraft_client.exe (Windows)
+        shell: bash
+        run: |
+          set -euo pipefail
+          x86_64-w64-mingw32-gcc apps/client/src/main.c packages/simulation/paper_fragment_mod.c \
+            -o papercraft_client.exe \
+            -O2 -static-libgcc \
+            -I./sdl2_mingw/include \
+            -I. -Ipackages/common -Ipackages/simulation \
+            -L./sdl2_mingw/lib \
+            -lmingw32 -lSDL2main -lSDL2 -lopengl32 -lglu32 -lws2_32 -lm
+          echo "Build OK: $(ls -lh papercraft_client.exe)"
+
+      - name: Build mapeditor.exe (Windows)
+        shell: bash
+        run: |
+          set -euo pipefail
+          x86_64-w64-mingw32-gcc apps/mapeditor/src/main.c \
+            -o mapeditor.exe \
+            -O2 -static-libgcc \
+            -I. -Ipackages/common \
+            -lws2_32 -lm
+          echo "Build OK: $(ls -lh mapeditor.exe)"
+
+      - name: Bundle Windows artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p PAPERCRAFT_Windows
+          cp papercraft_client.exe PAPERCRAFT_Windows/
+          cp mapeditor.exe PAPERCRAFT_Windows/
+          cp sdl2_mingw/bin/SDL2.dll PAPERCRAFT_Windows/
+          printf '%s\r\n' "start papercraft_client.exe" > PAPERCRAFT_Windows/PLAY.bat
+          printf '%s\r\n' "start mapeditor.exe" > PAPERCRAFT_Windows/EDIT_MAP.bat
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: papercraft-windows-${{ github.run_number }}-${{ github.sha }}
+          path: PAPERCRAFT_Windows/
+          if-no-files-found: error
+
+  build_macos:
+    name: 🍎 Build macOS Client + Map Editor
+    # Real, honest scope note: this job's own real correctness (does the bundled .dylib actually
+    # let a clean Mac with no Homebrew/SDL2 installed run this) has never been verified against a
+    # real macOS machine -- this development environment is Linux-only, no known real macOS host
+    # available, the same real, honest verification-tier limit apps/client's own live-rendering
+    # work has carried all session (see NORTHSTAR.md's own Phase 1b/1c-client sections). The build
+    # steps below follow well-established, standard SDL2-on-macOS practice (Homebrew SDL2 +
+    # `-framework OpenGL` + install_name_tool rpath rewriting for a self-contained bundle) but this
+    # job's own first real GitHub Actions run on the real macos-latest runner is the actual proof,
+    # not this comment.
+    runs-on: macos-latest
+    needs: [test]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL2
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install sdl2
+
+      - name: Build papercraft_client (macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang apps/client/src/main.c packages/simulation/paper_fragment_mod.c \
+            -o papercraft_client_macos \
+            -O2 \
+            $(sdl2-config --cflags) \
+            -I. -Ipackages/common -Ipackages/simulation \
+            $(sdl2-config --libs) \
+            -framework OpenGL -lm
+
+      - name: Build mapeditor (macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang apps/mapeditor/src/main.c \
+            -o mapeditor_macos \
+            -O2 \
+            -I. -Ipackages/common \
+            -lm
+
+      - name: Bundle macOS artifact (self-contained, no Homebrew required to run)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p PAPERCRAFT_macOS
+
+          # Real, standalone bundling: brew's own libSDL2 dylib is linked by its full real brew
+          # prefix path (e.g. /opt/homebrew/opt/sdl2/lib/libSDL2-2.0.0.dylib), which only resolves
+          # on a machine that has that exact same brew package installed -- not a real fix for a
+          # player who just downloaded a zip. install_name_tool rewrites both the binary's own
+          # load command and the copied dylib's own install name to @executable_path, the standard
+          # real macOS pattern for a self-contained app bundle (same real intent as the Windows
+          # job's own SDL2.dll-next-to-the-exe bundling, macOS's own real mechanism for it).
+          SDL2_DYLIB="$(otool -L papercraft_client_macos | grep -i libSDL2 | awk '{print $1}' | head -1)"
+          test -n "$SDL2_DYLIB"
+          cp "$SDL2_DYLIB" PAPERCRAFT_macOS/libSDL2.dylib
+          install_name_tool -id "@executable_path/libSDL2.dylib" PAPERCRAFT_macOS/libSDL2.dylib
+          install_name_tool -change "$SDL2_DYLIB" "@executable_path/libSDL2.dylib" papercraft_client_macos
+
+          cp papercraft_client_macos PAPERCRAFT_macOS/
+          cp mapeditor_macos PAPERCRAFT_macOS/
+          chmod +x PAPERCRAFT_macOS/papercraft_client_macos PAPERCRAFT_macOS/mapeditor_macos
+          printf '%s\n' "#!/usr/bin/env bash" "exec \"\$(dirname \"\$0\")/papercraft_client_macos\" \"\$@\"" > PAPERCRAFT_macOS/PLAY.sh
+          chmod +x PAPERCRAFT_macOS/PLAY.sh
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: papercraft-macos-${{ github.run_number }}-${{ github.sha }}
+          path: PAPERCRAFT_macOS/
+          if-no-files-found: error

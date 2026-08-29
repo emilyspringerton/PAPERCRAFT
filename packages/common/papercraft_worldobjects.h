@@ -3,8 +3,18 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+#ifdef _WIN32
+    /* Real Windows portability fix (2026-08-29, real cross-platform client/mapeditor CI): MSVC-CRT
+       mkdir() (declared in <io.h>, pulled in via <sys/stat.h> on mingw) takes only a path -- no
+       POSIX mode argument -- so the real two-argument POSIX call below doesn't compile as-is on
+       Windows. PC_MKDIR hides that real, small ABI difference behind one real call site. */
+    #include <direct.h>
+    #define PC_MKDIR(path) _mkdir(path)
+#else
+    #include <sys/stat.h>
+    #include <sys/types.h>
+    #define PC_MKDIR(path) mkdir((path), 0755)
+#endif
 
 /* papercraft_worldobjects.h -- real, persisted map data for PAPERCRAFT's own real map editor
  * (apps/mapeditor). Closes the "map editor" item down NORTHSTAR.md's own "Explicitly not Phase 0"
@@ -149,7 +159,7 @@ static inline void pc_worldobjects_ensure_dir(const char *path) {
     for (char *p = buf + 1; *p; p++) {
         if (*p == '/') {
             *p = '\0';
-            mkdir(buf, 0755);
+            PC_MKDIR(buf);
             *p = '/';
         }
     }

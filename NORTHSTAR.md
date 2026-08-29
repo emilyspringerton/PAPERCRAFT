@@ -751,6 +751,60 @@ Not scoped here: Phase 1's own remaining items (weapon/combat, the embedded edit
 conversion) stay real, later, deliberately unscoped until each gets its own real founder-direction
 or design pass — this section names ONE real, concrete next slice, not a full Phase 1 backlog.
 
+## Real, cross-platform client + map editor CI (2026-08-29)
+
+Founder real-time direction: "make sure we have the proper clients uploading as artifacts" ->
+"mac linux windows" -> "include the map editor". New `.github/workflows/ci.yml`: a real Bazel
+test gate (`bazel test //...`, this repo's own actual test suite, never run in CI before this),
+then three real platform build jobs — Linux (native gcc), Windows (mingw-w64 cross-compile from
+Linux, the exact same real pattern SHANKPIT's own `release.yml` already proved), and macOS
+(native `clang` on `macos-latest`, Homebrew SDL2) — each building `apps/client` and
+`apps/mapeditor` and uploading the result via `actions/upload-artifact`. `apps/server`
+deliberately excluded: it's Linux-only by design (`packages/common/papercraft_persist.h`'s own
+doc comment already said so), runs on this monorepo's own host, not a player's machine — the same
+real "server vs. distributed client" split SHANKPIT's own CI already draws.
+
+Real bugs found and fixed along the way, not just new CI wiring — this was the first time
+`apps/client` was ever actually compiled for a target other than native Linux gcc:
+- **A real, live Windows include-order bug.** mingw's own `<GL/gl.h>` drags in `<windows.h>`
+  internally; this file's own `_WIN32` winsock2 block came AFTER the GL/SDL includes, so
+  `<windows.h>` (via GL) always won first and broke every winsock2-only symbol used below, plus a
+  real compiler `#warning` every build. Fixed by moving the real `_WIN32` socket-header block to
+  the top of the file, before any GL/SDL include — the standard, correct real ordering.
+- **A real, live Windows compile error.** `packages/common/papercraft_worldobjects.h`'s own
+  `pc_worldobjects_ensure_dir` called POSIX two-argument `mkdir(path, mode)`; Windows' own CRT
+  `mkdir` (via `<io.h>`) takes only a path. New `PC_MKDIR` macro (`_mkdir` on `_WIN32`, real
+  `mkdir(path, 0755)` otherwise) hides the real, small ABI difference behind one call site — this
+  header is pulled in transitively by `apps/client` (via `papercraft_protocol.h`), so it has to
+  compile on Windows even though the client itself never calls this function.
+  `packages/common/papercraft_persist.h` (server-only, `apps/server`'s own real POSIX-only scope,
+  documented in its own header comment) was deliberately NOT touched — `apps/server` isn't part
+  of this cross-platform build.
+- **A real, macOS header-path portability gap.** `<GL/gl.h>`/`<GL/glu.h>` (the Linux/mingw path)
+  don't exist on macOS — the real path there is `<OpenGL/gl.h>`/`<OpenGL/glu.h>` (deprecated
+  since 10.14, still real and present, linked via `-framework OpenGL` instead of `-lGL -lGLU`).
+  Fixed with a real `#if defined(__APPLE__)` include guard, zero behavior change on Linux/Windows.
+- **5 real `sendto()` pointer-type warnings on Windows**, harmless in practice (winsock's own
+  `sendto` takes `const char *`, not POSIX's `const void *`, so passing a packet-struct pointer
+  with no cast warns on Windows but not Linux) — fixed with explicit `(const char *)` casts at
+  all 5 real call sites, for a fully warning-clean Windows build, not just a working one.
+
+Verified: raw-`gcc` (Linux) and raw-`x86_64-w64-mingw32-gcc` (Windows, this repo's own already-
+installed cross toolchain, `SDL2-devel-2.30.10-mingw` fetched fresh from the real upstream SDL
+release) dry-runs of the *exact* commands this workflow now runs, for both `apps/client` and
+`apps/mapeditor`, on this real development machine — both platforms link clean, zero warnings,
+zero errors, real working `ELF`/`PE32+` binaries produced (confirmed via `file`). `bazel clean &&
+bazel build //... && bazel test //...` after all fixes: 27 targets, 12/12 tests pass, unaffected.
+The macOS job itself is NOT locally verifiable — no macOS host in this environment, the same real,
+honest verification-tier limit named throughout Phase 1b/1c-client above; its first real run on
+GitHub's own `macos-latest` runner is the actual proof, not this doc.
+
+Deliberately not attempted here: release automation (auto-tag + GitHub Releases, matching
+SHANKPIT's/PITVIPER's own "auto release non pre release" precedent) — the real ask was "uploading
+as artifacts," not "cut a release," and whether PAPERCRAFT is a real release track yet (PITVIPER's
+own workflow draws that exact distinction against PARENA, still pre-1.0) is a separate, later
+founder call.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled
