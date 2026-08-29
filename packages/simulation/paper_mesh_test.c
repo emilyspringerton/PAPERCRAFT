@@ -97,7 +97,27 @@ int main(void) {
     paper_generate_box(&cube_b, 1.5f, 1.5f, 1.5f, 4, PAPER_MATERIAL_WOOD, 42u);
     assert(memcmp(&cube_a, &cube_b, sizeof(cube_a)) == 0);
 
-    printf("paper_mesh_test: all assertions passed (%d fragments, %d gone after blast, real non-cube box verified)\n",
+    /* Real per-face subdiv scaling: paper_face_grid picks the (gu,gv) factorization of
+       subdiv*subdiv whose own real grid aspect ratio is closest to a face's real world-space UV
+       aspect -- closes "a real, later improvement would scale subdiv per-face by its own real
+       aspect ratio." A perfectly square face (u_len==v_len) must still get the perfectly square
+       subdiv x subdiv grid (real back-compat, checked above via the whole-mesh byte-identical
+       cube comparison already) -- this checks the real, non-square case directly: a 3:1 real
+       aspect ratio should land on the real (8,2) grid (ratio 4.0, the closest real factorization
+       of 16 to 3.0 -- (4,4)'s own ratio 1.0 is real, provably farther in log-space: |ln(4)-ln(3)|
+       ~= 0.288 vs |ln(1)-ln(3)| ~= 1.099), not the naive uniform (4,4) a fixed-subdiv grid would
+       have used regardless of shape. */
+    {
+        int gu, gv;
+        paper_face_grid(6.0f, 2.0f, 4, &gu, &gv); /* real 3:1 aspect */
+        assert(gu == 8 && gv == 2);
+        paper_face_grid(2.0f, 2.0f, 4, &gu, &gv); /* real 1:1 aspect -- must stay square */
+        assert(gu == 4 && gv == 4);
+        paper_face_grid(2.0f, 6.0f, 4, &gu, &gv); /* real 1:3 aspect -- mirror of the first case */
+        assert(gu == 2 && gv == 8);
+    }
+
+    printf("paper_mesh_test: all assertions passed (%d fragments, %d gone after blast, real non-cube box + per-face subdiv scaling verified)\n",
            mesh.fragment_count, gone_count);
     return 0;
 }

@@ -313,14 +313,30 @@ the new object order; a real UDP probe walked to wall B specifically and confirm
 registers on it (`5/96` damaged). The general mechanism works through the actual public map
 editor interface, not just internal seeding.
 
+## Real per-face subdiv scaling now (2026-08-29)
+
+Closes "the same subdiv count spans a very different real world length" on a strongly non-uniform
+box. New `paper_face_grid(u_len, v_len, subdiv, &gu, &gv)` picks the `(gu,gv)` factorization of
+`subdiv*subdiv` (the real, unchanged total fragment count per face — `PC_WO_FRAGMENTS`/the wire
+format never move) whose own real grid aspect ratio is closest, in log-space, to that face's own
+real world-space UV aspect ratio — a long, thin wall face gets a real 8×2 grid instead of a fixed
+4×4 regardless of shape, so its own fragments read closer to square instead of uniformly
+elongated. A perfectly square face (any uniform-cube face, or a non-uniform box's own
+coincidentally-square faces) still gets the real, unchanged square grid — real, exact back-compat
+with every already-shipped object, verified by `paper_mesh_test.c`'s own existing byte-identical
+cube-vs-box assertion (still passes) plus new, direct assertions on `paper_face_grid` itself for
+a real 3:1 aspect (correctly resolves to `(8,2)`, provably closer in log-space than the naive
+`(4,4)` — `|ln(4)-ln(3)| ≈ 0.29` vs `|ln(1)-ln(3)| ≈ 1.10`) and its real 1:3 mirror. Verified live:
+regression-checked real interact/damage still works correctly on an actual carved city wall after
+the geometry change (`6/96` fragments damaged from 6 real hits, matching pre-change behavior).
+
 ## What's explicitly not built yet
 
 Real server-authoritative physics/collision for a detached fragment (the client-side debris above
 is real but cosmetic-only — no real collision with the world/players, no server authority, each
 client simulates its own copy independently), no real weapon/combat system beyond a bare punch
-with distance falloff (`PC_PACKET_INTERACT` still carries no aim/spread/weapon-type data), only
-one real scalar `subdiv` per object (uneven fragment density on a strongly non-uniform box, see
-above), and only a small, editor-placed set of real objects (`apps/mapeditor`,
+with distance falloff (`PC_PACKET_INTERACT` still carries no aim/spread/weapon-type data), and
+only a small, editor-placed set of real objects (`apps/mapeditor`,
 `PC_WO_MAX_OBJECTS=4`) — full-city conversion (every real `VoxelBlock` individually destructible,
 which the real wire budget genuinely can't support at this scale) and a real L-shaped/multi-part
 object matching a carved wall's own exact real footprint (rather than its bounding-box

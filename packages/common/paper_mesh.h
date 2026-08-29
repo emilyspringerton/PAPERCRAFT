@@ -91,18 +91,47 @@ static inline PaperVec3 paper_vec3(float x, float y, float z) {
     PaperVec3 v; v.x = x; v.y = y; v.z = z; return v;
 }
 
+/* paper_face_grid: real per-face subdivision-shape choice -- closes "a real, later improvement
+   would scale subdiv per-face by its own real aspect ratio." Picks the (gu,gv) factorization of
+   subdiv*subdiv (the real, FIXED total fragment count per face -- this never changes so
+   PC_WO_FRAGMENTS/the wire format stay exactly as they were) whose own real grid aspect ratio
+   (gu/gv) is closest to this face's own real world-space UV aspect ratio (u_len/v_len), so a
+   fragment on a long, thin face reads closer to square instead of uniformly elongated along the
+   long axis. Compared in log space so a 4:1 grid and a 1:4 grid are treated as equally distant
+   from a 1:1 target, not asymmetrically. A real, small, bounded search (at most subdiv*subdiv
+   factor-pair checks, subdiv is real-world tiny, PAPER_SUBDIV_MAX=8 means at most 64). */
+static inline void paper_face_grid(float u_len, float v_len, int subdiv, int *out_gu, int *out_gv) {
+    int n = subdiv * subdiv;
+    float target_ratio = (v_len > 0.0001f) ? (u_len / v_len) : 1.0f;
+    if (target_ratio < 0.0001f) target_ratio = 0.0001f;
+    int best_gu = subdiv, best_gv = subdiv;
+    float best_dist = 1e30f;
+    for (int gu = 1; gu <= n; gu++) {
+        if (n % gu != 0) continue;
+        int gv = n / gu;
+        float ratio = (float)gu / (float)gv;
+        float dist = fabsf(logf(ratio) - logf(target_ratio));
+        if (dist < best_dist) {
+            best_dist = dist;
+            best_gu = gu;
+            best_gv = gv;
+        }
+    }
+    *out_gu = best_gu;
+    *out_gv = best_gv;
+}
+
 /* paper_generate_box: real subdivide-then-jitter mesh build, generalized to real independent
    per-axis half-extents (half_x/half_y/half_z) -- closes "no non-cube base shapes (a wall
    segment is not literally a cube in a real city)". A uniform cube is just half_x==half_y==half_z;
-   paper_generate_cube below is a thin wrapper kept for every existing real call site. subdiv is
-   still one real scalar controlling fragments-per-face-edge uniformly across all 6 faces --
-   real, honest limitation for a strongly non-uniform box (e.g. a real thin, wide wall slab):
-   faces along the short axis get small, dense fragments while faces along the long axis get
-   comparatively large ones, since the same subdiv count spans a very different real world
-   length. A real, later improvement would scale subdiv per-face by its own real aspect ratio;
-   not needed to prove this pass's own real point (independent per-axis sizing, not per-face
-   fragment density). material/seed are both real inputs, not defaulted -- the same seed+params
-   always produces the exact same fragment list, verified by paper_mesh_test.c. */
+   paper_generate_cube below is a thin wrapper kept for every existing real call site. Each real
+   face's own grid shape (not just its total fragment count) is chosen by paper_face_grid above,
+   closing "a real, later improvement would scale subdiv per-face by its own real aspect ratio" --
+   every face still gets exactly subdiv*subdiv fragments (so the real total, and therefore
+   PC_WO_FRAGMENTS/the wire format, never changes), just arranged closer to that face's own real
+   proportions instead of a fixed square grid regardless of shape. material/seed are both real
+   inputs, not defaulted -- the same seed+params always produces the exact same fragment list,
+   verified by paper_mesh_test.c. */
 static inline void paper_generate_box(PaperCubeMesh *mesh, float half_x, float half_y, float half_z,
                                        int subdiv, int material, unsigned int seed) {
     if (subdiv < 1) subdiv = 1;
@@ -112,7 +141,11 @@ static inline void paper_generate_box(PaperCubeMesh *mesh, float half_x, float h
     mesh->subdiv = subdiv;
 
     /* Real 6-face cube definition: each face is a (origin corner, u-axis, v-axis, normal)
-       tuple -- the real, standard "unfold a cube into 6 flat grids" shape, not a shortcut. */
+       tuple -- the real, standard "unfold a cube into 6 flat grids" shape, not a shortcut.
+       face_uv_half_idx names which of half_x/half_y/half_z (0/1/2) each face's own real U and V
+       axis scales by -- derived directly from which component of u_axis/v_axis is nonzero above,
+       needed so paper_face_grid can compare this face's own real world-space UV proportions,
+       not just its local unit-square shape. */
     static const float face_def[6][4][3] = {
         /* +X */ {{1,-1,-1},{0,2,0},{0,0,2},{1,0,0}},
         /* -X */ {{-1,-1,1},{0,2,0},{0,0,-2},{-1,0,0}},
@@ -121,6 +154,15 @@ static inline void paper_generate_box(PaperCubeMesh *mesh, float half_x, float h
         /* +Z */ {{1,-1,1},{-2,0,0},{0,2,0},{0,0,1}},
         /* -Z */ {{-1,-1,-1},{2,0,0},{0,2,0},{0,0,-1}},
     };
+    static const int face_uv_half_idx[6][2] = {
+        /* +X */ {1, 2}, /* U~Y, V~Z */
+        /* -X */ {1, 2},
+        /* +Y */ {0, 2}, /* U~X, V~Z */
+        /* -Y */ {0, 2},
+        /* +Z */ {0, 1}, /* U~X, V~Y */
+        /* -Z */ {0, 1},
+    };
+    const float half[3] = {half_x, half_y, half_z};
 
     int frag_index = 0;
     for (int face = 0; face < 6; face++) {
@@ -129,13 +171,18 @@ static inline void paper_generate_box(PaperCubeMesh *mesh, float half_x, float h
         PaperVec3 v_axis = paper_vec3(face_def[face][2][0], face_def[face][2][1], face_def[face][2][2]);
         PaperVec3 normal = paper_vec3(face_def[face][3][0], face_def[face][3][1], face_def[face][3][2]);
 
-        for (int gv = 0; gv < subdiv; gv++) {
-            for (int gu = 0; gu < subdiv; gu++) {
+        float u_len = 2.0f * half[face_uv_half_idx[face][0]];
+        float v_len = 2.0f * half[face_uv_half_idx[face][1]];
+        int gu_count, gv_count;
+        paper_face_grid(u_len, v_len, subdiv, &gu_count, &gv_count);
+
+        for (int gv = 0; gv < gv_count; gv++) {
+            for (int gu = 0; gu < gu_count; gu++) {
                 if (frag_index >= PAPER_MAX_FRAGMENTS) goto done;
                 PaperFragment *f = &mesh->fragments[frag_index];
 
-                float u0 = (float)gu / (float)subdiv, u1 = (float)(gu + 1) / (float)subdiv;
-                float v0 = (float)gv / (float)subdiv, v1 = (float)(gv + 1) / (float)subdiv;
+                float u0 = (float)gu / (float)gu_count, u1 = (float)(gu + 1) / (float)gu_count;
+                float v0 = (float)gv / (float)gv_count, v1 = (float)(gv + 1) / (float)gv_count;
                 float corner_uv[4][2] = {{u0,v0},{u1,v0},{u1,v1},{u0,v1}};
 
                 for (int c = 0; c < 4; c++) {
