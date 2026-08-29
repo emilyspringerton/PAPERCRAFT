@@ -600,6 +600,25 @@ int main(int argc, char **argv) {
     (void)log_stderr;
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
+
+    /* Real, live bug found and fixed (2026-08-29, root-caused from a founder-pasted real
+       papercraft_client.log after the verbose HTTP logging above was added): WSAStartup() used to
+       run much later in this function (right before SDL_Init), but the real, mandatory worldapi
+       chunk fetch a few lines below runs BEFORE that point -- so every Winsock call it makes
+       (getaddrinfo included) ran with Winsock never initialized. Real, confirmed symptom: a real
+       WSA error 10093 (WSANOTINITIALISED) on the very first getaddrinfo() call, logged as "FAILED:
+       getaddrinfo(okemily.com) real error: 10093" -- this was NEVER actually a firewall/DNS/
+       network-reachability problem, despite an entire real, live firewall investigation (external
+       multi-region TCP checks, ufw rules, etc.) chasing it as one; the real bug only became
+       findable once this file's own new [http] logging gave a real WSA error CODE to look up,
+       instead of the prior generic, undifferentiated FATAL line. Moved here, before any Winsock
+       call this file makes (the chunk fetch immediately below included), fixes it at the real
+       source instead of patching around it. A real no-op on Linux/macOS (the #else branch does
+       nothing) -- WSAStartup/Winsock is a real Windows-only concept. */
+#ifdef _WIN32
+    WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);
+#endif
+
     const char *worldapi_host = "localhost";
     int worldapi_port = 7070;
     const char *server_host = "localhost";
@@ -694,10 +713,6 @@ int main(int argc, char **argv) {
     static int g_debris_cursor = 0;
     static unsigned char g_prev_wo_state[PC_WO_MAX_OBJECTS][PC_WO_FRAGMENTS];
     static int g_prev_wo_state_valid = 0;
-
-#ifdef _WIN32
-    WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);
-#endif
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
