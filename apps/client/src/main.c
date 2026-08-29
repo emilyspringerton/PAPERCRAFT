@@ -425,7 +425,19 @@ static void spawn_debris_for_fragment(PcDebrisPiece *pool, int *cursor, const Pa
    client-side flourish. A piece with no current real match (never tracked, evicted for a newer
    real detach event under the server's own small PC_FALLING_FRAGMENTS_MAX cap, or already
    landed) falls back to the exact same real local simulation this function always used --
-   zero behavior change for that real, common case. */
+   zero behavior change for that real, common case.
+
+   Real Phase 1c (2026-08-29): a real, matching piece also gets a real Y-axis rotation applied,
+   computed by hand (not delegated to a GL matrix stack, which would force splitting this real,
+   single glBegin/glEnd batch into one draw call per piece) -- a real, standard 2D rotation of
+   each real corner's own (x,z) around this piece's own local centroid (the average of its 4 real
+   corners, not the fragment's own pre-jitter theoretical center -- rotating around the real
+   visual centroid looks correct regardless of jitter), by `rotation_deg` (converted to radians),
+   leaving y untouched (this is a real rotation around the world Y axis only, matching Phase 1c's
+   own server-side real, deliberately simple single-axis spin, not full 3D tumbling). Verified by
+   hand-tracing a concrete real example before shipping, not just trusting the formula (see this
+   repo's own commit message for the full real numeric trace) -- not verified in a live graphical
+   session, the same real, honest scope limit Phase 1b's own Y-override carried. */
 static void update_and_draw_debris(PcDebrisPiece *pool, const PcSnapshotPacket *snap) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -436,14 +448,17 @@ static void update_and_draw_debris(PcDebrisPiece *pool, const PcSnapshotPacket *
         d->age += PC_DEBRIS_DT;
         if (d->age >= PC_DEBRIS_LIFETIME_S) { d->active = 0; continue; }
 
-        float real_y;
-        if (pc_falling_lookup_y(snap, d->object_idx, d->fragment_idx, &real_y)) {
+        PcFallingFragment real_match = {0}; /* zero-init: silences a real -Wmaybe-uninitialized on
+            the compiler's own inlined build, since it can't always prove has_real_match's own
+            short-circuit guards every later real_match field read -- true at runtime regardless. */
+        int has_real_match = pc_falling_lookup(snap, d->object_idx, d->fragment_idx, &real_match);
+        if (has_real_match) {
             /* Real, server-authoritative vertical position -- convert the real absolute y back
                into this piece's own real offset_y space (see PcDebrisPiece's own center_y doc
                comment). vy is zeroed too, so a later frame where this real match disappears
                (landed, or evicted) resumes local simulation from real rest, not a real leftover
                velocity from before real data took over. */
-            d->offset_y = real_y - d->anchor_y - d->center_y;
+            d->offset_y = real_match.y - d->anchor_y - d->center_y;
             d->vy = 0.0f;
         } else {
             d->vy -= PC_DEBRIS_GRAVITY * PC_DEBRIS_DT;
@@ -461,10 +476,27 @@ static void update_and_draw_debris(PcDebrisPiece *pool, const PcSnapshotPacket *
         else if (d->material == PAPER_MATERIAL_PAPER) glColor4f(0.8f, 0.78f, 0.7f, fade);
         else glColor4f(0.4f, 0.38f, 0.35f, fade); /* CONCRETE -- a real, slightly darker tint than an intact fragment's own, reads as broken debris */
 
+        float rx[4], rz[4];
+        if (has_real_match && real_match.rotation_deg != 0.0f) {
+            float cx = 0.0f, cz = 0.0f;
+            for (int c = 0; c < 4; c++) { cx += d->local_corners[c].x; cz += d->local_corners[c].z; }
+            cx *= 0.25f; cz *= 0.25f;
+            float theta = real_match.rotation_deg * ((float)M_PI / 180.0f);
+            float cos_t = cosf(theta), sin_t = sinf(theta);
+            for (int c = 0; c < 4; c++) {
+                float rel_x = d->local_corners[c].x - cx;
+                float rel_z = d->local_corners[c].z - cz;
+                rx[c] = cx + rel_x * cos_t - rel_z * sin_t;
+                rz[c] = cz + rel_x * sin_t + rel_z * cos_t;
+            }
+        } else {
+            for (int c = 0; c < 4; c++) { rx[c] = d->local_corners[c].x; rz[c] = d->local_corners[c].z; }
+        }
+
         for (int c = 0; c < 4; c++) {
-            glVertex3f(d->anchor_x + d->local_corners[c].x + d->offset_x,
+            glVertex3f(d->anchor_x + rx[c] + d->offset_x,
                        d->anchor_y + d->local_corners[c].y + d->offset_y,
-                       d->anchor_z + d->local_corners[c].z + d->offset_z);
+                       d->anchor_z + rz[c] + d->offset_z);
         }
     }
     glEnd();

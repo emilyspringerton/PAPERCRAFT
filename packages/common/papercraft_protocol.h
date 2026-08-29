@@ -345,13 +345,18 @@ typedef struct {
     PcFallingFragment falling[PC_FALLING_FRAGMENTS_MAX];
 } PcSnapshotPacket;
 
-/* pc_falling_lookup_y: real Phase 1b logic (2026-08-29, NORTHSTAR.md's own "Real Phase 1"
+/* pc_falling_lookup: real Phase 1b/1c logic (2026-08-29, NORTHSTAR.md's own "Real Phase 1"
  * section) -- given a real (object_idx, fragment_idx) pair, scans a real snapshot's own
- * falling[] broadcast for an active match and writes its real, current, server-authoritative y
- * to *out_y. Returns 1 on a real match, 0 otherwise (caller falls back to local, client-side
- * simulation for that piece -- untracked, evicted under the real, small
- * PC_FALLING_FRAGMENTS_MAX cap, or already landed are all real, honest, expected cases, not
- * errors).
+ * falling[] broadcast for an active match and writes the real, current, server-authoritative
+ * entry (both `y` and `rotation_deg`) to *out. Returns 1 on a real match, 0 otherwise (caller
+ * falls back to local, client-side simulation for that piece -- untracked, evicted under the
+ * real, small PC_FALLING_FRAGMENTS_MAX cap, or already landed are all real, honest, expected
+ * cases, not errors).
+ *
+ * Real, deliberately renamed from its own original Phase 1b-only `pc_falling_lookup_y` (2026-08-29,
+ * same day, when Phase 1c added `rotation_deg`) -- returns the whole real matching entry now
+ * instead of just `y`, one real lookup for both real quantities instead of two near-duplicate
+ * scans.
  *
  * Pulled out as its own real, pure, header-level function -- no OpenGL/SDL dependency at all --
  * specifically so it's real, independently testable (packages/common/
@@ -359,12 +364,12 @@ typedef struct {
  * real reason paper_mesh.h's own geometry functions live in a header instead of being inlined
  * into apps/client directly. apps/client's own update_and_draw_debris calls this once per real
  * debris piece per frame; it does not duplicate this real lookup logic itself. */
-static inline int pc_falling_lookup_y(const PcSnapshotPacket *snap, int object_idx, int fragment_idx, float *out_y) {
+static inline int pc_falling_lookup(const PcSnapshotPacket *snap, int object_idx, int fragment_idx, PcFallingFragment *out) {
     for (int fi = 0; fi < PC_FALLING_FRAGMENTS_MAX; fi++) {
         if (snap->falling_active[fi] &&
             snap->falling[fi].object_idx == (unsigned char)object_idx &&
             snap->falling[fi].fragment_idx == (unsigned char)fragment_idx) {
-            *out_y = snap->falling[fi].y;
+            *out = snap->falling[fi];
             return 1;
         }
     }

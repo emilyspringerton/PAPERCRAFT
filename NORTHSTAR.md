@@ -691,7 +691,9 @@ exactly as it always was, real client-side cosmetic flourish. A piece with no cu
 landed) falls back to the exact same real local simulation unchanged — zero behavior change for
 that real, common case.
 
-The real lookup itself (`pc_falling_lookup_y`, `packages/common/papercraft_protocol.h`) is pulled
+The real lookup itself (`pc_falling_lookup` — renamed from `pc_falling_lookup_y` in Phase 1c-client
+below, now returning the whole matching `PcFallingFragment` instead of just `y`,
+`packages/common/papercraft_protocol.h`) is pulled
 out as its own real, pure, header-level function — no OpenGL/SDL dependency — specifically so it's
 real, independently testable without a live graphical client or a real IDUNA login (this
 environment has no known real test user for full login automation, the same real, honest scope
@@ -719,11 +721,31 @@ special flags): 27 targets, 12/12 tests pass. Real, live, end-to-end UDP verific
 probe hand-computed the expected rate for `fragment_idx=24` (`167.1429` deg/s) and measured the
 real, observed rate from four real wire samples spanning the fragment's whole real fall — landed
 at `167.1428` deg/s, a ratio of `1.000`, confirming the real integration is exact, not
-approximately right. `apps/client` deliberately NOT updated to render this real rotation — getting
-a real 3D rotation transform visually correct benefits from actually seeing it, which this
-environment's own real, honest client-verification limit (no known real test IDUNA user for a
-live graphical session) doesn't allow yet, the same honest scope limit Phase 1b's own rendering
-integration already carried; a real, separate, deliberately deferred next step, not glossed over.
+approximately right.
+
+**Phase 1c-client — real rotation rendering, closes the deferred gap, shipped the same day too.**
+`apps/client` now renders the real server-authoritative spin Phase 1c broadcasts, closing the gap
+explicitly deferred above. The shared lookup (`pc_falling_lookup_y`, which returned only `*out_y`)
+was renamed and re-signatured to `pc_falling_lookup`, which writes the whole matching
+`PcFallingFragment` (both `y` and `rotation_deg`) to one out-pointer instead of forcing a second,
+near-duplicate scan for the new field — `apps/client`'s own `update_and_draw_debris` and
+`packages/common/papercraft_falling_test.c` were both updated to the new signature (the test file's
+own 8 real assertions were preserved and extended with real `rotation_deg` checks on top of the
+existing `y` checks, now 11 real assertions total). Real rotation is applied by hand, not delegated
+to a GL matrix stack (which would force splitting the existing single `glBegin`/`glEnd` debris batch
+into one draw call per piece): each debris piece's own 4 real `local_corners` get rotated in the XZ
+plane around their own real local centroid (the average of the 4 corners, not the fragment's own
+pre-jitter theoretical center — correct regardless of jitter) by the real, matched `rotation_deg`,
+leaving `y` untouched (this is a real single-axis Y-rotation, matching Phase 1c's own deliberately
+simple server-side spin, not full 3D tumbling); a piece with no real match falls back to its
+unrotated `local_corners` unchanged, the same zero-behavior-change pattern Phase 1b's own Y-override
+already established. Verified by hand-tracing a concrete real numeric example before shipping (a
+real unit-ish quad centered at local (1.25, 1.25) rotated a real 90° around its own real centroid
+maps each real corner exactly onto its real neighboring corner's original position — confirmed by
+direct computation, not just trusting the formula) — not verified in a live graphical Xvfb session,
+the same real, honest client-verification scope limit Phase 1b's own rendering integration already
+carried. Verified live, fully clean (`bazel clean`, then a plain `bazel build`/`bazel test`, no
+special flags): 27 targets, 12/12 tests pass, including the extended `papercraft_falling_test`.
 
 Not scoped here: Phase 1's own remaining items (weapon/combat, the embedded editor, full-city
 conversion) stay real, later, deliberately unscoped until each gets its own real founder-direction
