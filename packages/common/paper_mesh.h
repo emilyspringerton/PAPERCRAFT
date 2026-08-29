@@ -190,22 +190,37 @@ static inline void paper_fragment_apply_damage(PaperFragment *f, int damage) {
     f->state = on_paper_fragment_state_for_hp(f->hp, f->max_hp);
 }
 
+/* on_papercraft_interact_damage_falloff: the real PARENA-compiled distance-falloff decision
+   (packages/simulation/interact_falloff_mod.c) -- closes "uniform per-fragment for this first
+   real pass; falloff by distance is real, later tuning" (this doc comment's own earlier draft).
+   Real, deliberate composition: this decides an effective BASE damage from real distance; the
+   existing on_paper_fragment_damage (material resistance, called from
+   paper_fragment_apply_damage below) still runs afterward on whatever this returns -- two real,
+   separately-testable decisions, not one merged one. */
+int on_papercraft_interact_damage_falloff(int base_damage, int dist_permille);
+
 /* paper_mesh_damage_radius: "some of those faces come off when you hit it with a shotgun" -- a
    real, local hit event, not a whole-panel HP bar. Every fragment whose own center falls within
-   `radius` of `hit` takes `damage` (uniform per-fragment for this first real pass; falloff by
-   distance is real, later tuning, not needed to prove the technique). Returns the real count of
-   fragments that reached PAPER_STATE_GONE from this one call, so a caller can know whether a
-   real hole actually opened up. */
+   `radius` of `hit` takes real, distance-falloff-scaled damage (full at the real hit center,
+   scaling down to zero at the real radius edge -- on_papercraft_interact_damage_falloff's own
+   real decision, not a uniform value regardless of how close the hit actually was). Returns the
+   real count of fragments that reached PAPER_STATE_GONE from this one call, so a caller can know
+   whether a real hole actually opened up. */
 static inline int paper_mesh_damage_radius(PaperCubeMesh *mesh, PaperVec3 hit, float radius, int damage) {
     int newly_gone = 0;
     for (int i = 0; i < mesh->fragment_count; i++) {
         PaperFragment *f = &mesh->fragments[i];
         if (f->state == PAPER_STATE_GONE) continue;
         float dx = f->center.x - hit.x, dy = f->center.y - hit.y, dz = f->center.z - hit.z;
-        if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
-        int was_gone = (f->state == PAPER_STATE_GONE);
-        paper_fragment_apply_damage(f, damage);
-        if (!was_gone && f->state == PAPER_STATE_GONE) newly_gone++;
+        float dist2 = dx * dx + dy * dy + dz * dz;
+        if (dist2 > radius * radius) continue;
+        /* Real host-side work VS0 genuinely can't do (F32 sqrt, F32 division) -- turning real
+           squared-distance into a real, normalized fixed-point ratio the mod can decide on. */
+        float dist = sqrtf(dist2);
+        int dist_permille = (radius > 0.0f) ? (int)((dist / radius) * 1000.0f) : 0;
+        int effective_damage = on_papercraft_interact_damage_falloff(damage, dist_permille);
+        paper_fragment_apply_damage(f, effective_damage);
+        if (f->state == PAPER_STATE_GONE) newly_gone++;
     }
     return newly_gone;
 }

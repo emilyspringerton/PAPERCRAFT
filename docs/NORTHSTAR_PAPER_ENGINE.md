@@ -233,16 +233,37 @@ targeting still correctly reaches a non-cube object (the max-reach check now use
 the three real per-axis half-extents), and captured a real screenshot showing a genuinely wide,
 short slab — not a cube — with visible real damage tinting where it was punched.
 
+## Real interact damage falloff by distance now (2026-08-29)
+
+Closes "uniform per-fragment for this first real pass; falloff by distance is real, later
+tuning." New `PARENA/stdlib/papercraft/interact_falloff_mod.prn` →
+`on-papercraft-interact-damage-falloff` — a real, simple linear falloff (full damage at the real
+hit center, scaling to zero at the real radius edge), I32 fixed-point (dist pre-scaled to
+permille). Deliberately composed with, not merged into, the existing real material-resistance
+decision (`on-paper-fragment-damage`) — `paper_mesh_damage_radius`
+(`packages/common/paper_mesh.h`) now computes each fragment's own real distance-derived ratio,
+asks the falloff mod for an effective base damage, and only then hands that to the unchanged
+existing damage-application path, matching this repo's own "mod decides, host composes" split
+with two real, separately-testable decisions instead of one merged one.
+
+Verified live with a real, falsifiable, quantified prediction: the exact same real single-hit,
+one-shot-a-96-fragment-PAPER-object scenario this session already measured *before* falloff
+existed (73/96 fragments went `GONE` in one hit) was re-run *after* this change — real result:
+`52 intact, 23 cracked, 11 torn, 10 gone` (out of 96), server log confirming `"10 fragment(s)
+broke off"` exactly. A real, meaningful gradient instead of the old uniform full-radius
+destruction — fragments near the real hit center still break, fragments near the real radius edge
+now only crack or stay intact.
+
 ## What's explicitly not built yet
 
 Real server-authoritative physics/collision for a detached fragment (the client-side debris above
 is real but cosmetic-only — no real collision with the world/players, no server authority, each
-client simulates its own copy independently), no real weapon/combat system (`PC_PACKET_INTERACT`
-is a bare punch, not a shotgun blast with its own damage falloff/spread), only one real scalar
-`subdiv` per object (uneven fragment density on a strongly non-uniform box, see above), and only a
-small, editor-placed set of real objects (`apps/mapeditor`, `PC_WO_MAX_OBJECTS=4`) — real
-integration into the city's own actual `VoxelBlock` geometry (so real building walls, not just
-standalone props, are destructible) is separate, future work. The
+client simulates its own copy independently), no real weapon/combat system beyond a bare punch
+with distance falloff (`PC_PACKET_INTERACT` still carries no aim/spread/weapon-type data), only
+one real scalar `subdiv` per object (uneven fragment density on a strongly non-uniform box, see
+above), and only a small, editor-placed set of real objects (`apps/mapeditor`,
+`PC_WO_MAX_OBJECTS=4`) — real integration into the city's own actual `VoxelBlock` geometry (so
+real building walls, not just standalone props, are destructible) is separate, future work. The
 bare-punch hit-detection gap named in an earlier draft of this section
 is now closed — see "Live-wired into the actual game loop" above. Real Phase 1 sequencing for the
 remaining items above is separate, future work, matching this repo's own "docs before software,

@@ -35,13 +35,15 @@ cc_test(
 )
 
 # paper_mesh_test -- exercises packages/common/paper_mesh.h (the real subdivide-and-jitter cube
-# generator) linked against :paper_fragment (paper_mesh.h calls the real PARENA-compiled
-# on_paper_fragment_damage/on_paper_fragment_state_for_hp functions directly).
+# generator) linked against :paper_fragment and :interact_falloff (paper_mesh.h calls the real
+# PARENA-compiled on_paper_fragment_damage/on_paper_fragment_state_for_hp/
+# on_papercraft_interact_damage_falloff functions directly).
 cc_test(
     name = "paper_mesh_test",
     srcs = ["paper_mesh_test.c"],
     deps = [
         ":paper_fragment",
+        ":interact_falloff",
         "//packages/common:common_headers",
     ],
     linkopts = ["-lm"],
@@ -111,4 +113,21 @@ cc_test(
     name = "xp_award_mod_test",
     srcs = ["xp_award_mod_test.c"],
     deps = [":xp_award"],
+)
+
+# interact_falloff -- the real, PARENA-compiled interact damage falloff-by-distance decision,
+# closing paper_mesh.h's own honestly-deferred gap ("uniform per-fragment for this first real
+# pass; falloff by distance is real, later tuning"). Composes with :paper_fragment (material
+# resistance) rather than replacing it -- two real, separately-testable decisions.
+cc_library(
+    name = "interact_falloff",
+    srcs = ["interact_falloff_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "interact_falloff_mod_test",
+    srcs = ["interact_falloff_mod_test.c"],
+    deps = [":interact_falloff"],
 )
