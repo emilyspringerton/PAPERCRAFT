@@ -240,9 +240,14 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   (CONCRETE/WOOD/METAL, one in the neighbor chunk), confirmed the server loaded and broadcast
   them correctly, and confirmed real per-object interact targeting — punching near the METAL
   object damaged only that object, leaving the CONCRETE one fully intact. Real, open question
-  still unresolved: whether/how this relates to `WEAKNIGHT_BEDROCK_RACERS`' own same-day "map
-  editor from day 1" note (`EMILY/BACKLOG.md` S204-08) — same idea independently named for both
-  repos, or one shared tool. Not resolved here. Not yet built: a real graphical/in-game editor
+  from earlier in this doc, now checked and resolved (2026-08-29): `WEAKNIGHT_BEDROCK_RACERS`'
+  own same-day "map editor from day 1" note (`EMILY/BACKLOG.md` S204-08) is still real, entirely
+  unscoped, un-built work in that repo — "not yet scoped past this note" is its own full real
+  status. No existing tool to reconcile with; `apps/mapeditor` here is the only real map editor
+  either repo has, not a duplicate of something WEAKNIGHT_BEDROCK_RACERS already built. Whether a
+  future WEAKNIGHT_BEDROCK_RACERS editor reuses this same real pattern (or this exact tool) is
+  real, later, that repo's own call, not resolved here either — but the "are we duplicating real
+  work" question itself is answered: no. Not yet built: a real graphical/in-game editor
   (this pass is offline-CLI only, no live-server editing), and variable per-object subdivision.
   `apps/mapeditor` since grew a real `--carve` flag and AABB overlap warnings (2026-08-29, see
   `docs/NORTHSTAR_PAPER_ENGINE.md`'s own "Real, general, data-driven carve-out now" section) —
