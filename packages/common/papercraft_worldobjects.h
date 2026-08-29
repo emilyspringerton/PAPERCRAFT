@@ -57,6 +57,27 @@ typedef struct {
                                       Closes "no non-cube base shapes (a wall segment is not
                                       literally a cube in a real city)". */
     unsigned int seed;
+
+    /* Real, optional carve-out box -- when has_carve is real/nonzero, this object doesn't just
+       sit ON the real city terrain, it REPLACES a real, already-solid VoxelBlock region: both
+       apps/server and apps/client remove every real block inside
+       [carve_x0,carve_x1] x [carve_y0,carve_y1] x [carve_z0,carve_z1] (chunk (0,0)'s own
+       chunk-local block coordinates, inclusive) from the normal solid render/ground-collision
+       path before spawning this object, so the object visually and physically stands in for the
+       real geometry it replaced instead of floating on top of or overlapping it. Generalizes the
+       original hardcoded single PC_CITY_WALL_A_* case (packages/common/papercraft_protocol.h)
+       into a real, data-driven system any world object can opt into -- closes "a general
+       data-driven carve-out system... stays real, later work." Scoped to chunk (0,0) only for
+       now (matching the original case's own real scope, not a full multi-chunk carve system).
+       Real `unsigned char`, not `int` -- chunk-local block coordinates are always genuinely
+       small (X/Z: 0..15, PW_CHUNK_SIZE; Y: worldapi's own real urban chunks sit around 61-69,
+       comfortably under 255) -- this is broadcast in every real PcSnapshotPacket
+       (papercraft_protocol.h), so keeping it real, honest, and small matters for the real
+       unfragmented-UDP wire budget, not just for the object list's own on-disk size. */
+    unsigned char has_carve;
+    unsigned char carve_x0, carve_x1;
+    unsigned char carve_y0, carve_y1;
+    unsigned char carve_z0, carve_z1;
 } PcWorldObjectDef;
 
 typedef struct {

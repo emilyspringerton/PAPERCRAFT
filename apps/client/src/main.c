@@ -533,19 +533,14 @@ int main(int argc, char **argv) {
         printf("Real city chunk grid loaded (%d chunks, %d total blocks).\n", PW_GRID_CHUNKS, total_blocks);
     }
 
-    /* Real city-wall carve-out (PC_CITY_WALL_A_*, packages/common/papercraft_protocol.h) -- the
-       client independently removes the exact same real 15 blocks from chunk (0,0) the server
-       does, so draw_city_world doesn't double-render solid geometry underneath the real
-       server-broadcast Paper Engine object that now stands there instead. */
-    {
-        int origin_idx = pw_world_index(0, 0);
-        if (origin_idx >= 0 && g_world.loaded[origin_idx]) {
-            pw_chunk_remove_box(&g_world.chunks[origin_idx],
-                                 PC_CITY_WALL_A_BLOCK_X0, PC_CITY_WALL_A_BLOCK_X1,
-                                 PC_CITY_WALL_A_BLOCK_Y0, PC_CITY_WALL_A_BLOCK_Y1,
-                                 PC_CITY_WALL_A_BLOCK_Z0, PC_CITY_WALL_A_BLOCK_Z1);
-        }
-    }
+    /* Real, data-driven city-wall carve-out (packages/common/papercraft_worldobjects.h's own
+       PcWorldObjectDef::has_carve) -- applied lazily below, the first real time this client sees
+       each real object in a live snapshot (any object can carry real carve bounds now, not just
+       one hardcoded case), the same real "first time we see this object" trigger
+       g_wo_mesh_ready[] already uses for mesh generation. Unlike the server (which carves at
+       startup, before any player connects), the client only learns an object's own real carve
+       bounds from the wire -- so it can't carve until it's actually received one, a real,
+       unavoidable ordering difference from the server's own eager carve. */
 
     /* Real, editor-authored world objects (packages/common/papercraft_worldobjects.h) --
        replaces the old hardcoded single test cube. Unlike the old compile-time PC_TEST_CUBE_*
@@ -560,6 +555,9 @@ int main(int argc, char **argv) {
        snapshot, never geometry. */
     static PaperCubeMesh g_wo_mesh[PC_WO_MAX_OBJECTS];
     static int g_wo_mesh_ready[PC_WO_MAX_OBJECTS];
+    static int g_wo_carve_applied[PC_WO_MAX_OBJECTS]; /* real, per-object "already carved this
+                                                           object's own real block region out of
+                                                           g_world" latch */
     /* Real debris state -- packages/common/paper_mesh.h's own fragments feed spawn_debris_for_fragment
        the moment this client detects a real GONE transition (diffing consecutive snapshots below). */
     static PcDebrisPiece g_debris[PC_MAX_DEBRIS];
@@ -764,6 +762,26 @@ int main(int argc, char **argv) {
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         gluLookAt(eye_x, eye_y, eye_z, own.x, own.y + 1.0f, own.z, 0.0, 1.0, 0.0);
+
+        /* Real, data-driven carve-out pre-pass -- applied BEFORE draw_city_world so a real
+           object's own carved-out block region never renders solid for even one real frame
+           (unlike deriving it lazily inside the same loop that draws afterward, which would let
+           the very first frame an object is seen still show the real, stale solid geometry
+           underneath it). */
+        for (int o = 0; o < PC_WO_MAX_OBJECTS; o++) {
+            if (!latest_snap.world_object_active[o]) continue;
+            const PcWorldObjectDef *carve_def = &latest_snap.world_objects[o];
+            if (!g_wo_carve_applied[o] && carve_def->has_carve) {
+                int origin_idx = pw_world_index(0, 0);
+                if (origin_idx >= 0 && g_world.loaded[origin_idx]) {
+                    pw_chunk_remove_box(&g_world.chunks[origin_idx],
+                                         carve_def->carve_x0, carve_def->carve_x1,
+                                         carve_def->carve_y0, carve_def->carve_y1,
+                                         carve_def->carve_z0, carve_def->carve_z1);
+                }
+                g_wo_carve_applied[o] = 1;
+            }
+        }
 
         draw_city_world(&g_world);
         /* latest_snap is zero-initialized, so world_object_active[] correctly reads as "nothing

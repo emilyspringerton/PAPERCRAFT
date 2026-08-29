@@ -377,24 +377,6 @@ int main(int argc, char **argv) {
                PW_GRID_CHUNKS, total_blocks, PW_GRID_RADIUS, PW_GRID_RADIUS);
     }
 
-    /* Real first case of "real integration into the city's own actual VoxelBlock geometry"
-       (PC_CITY_WALL_A_*, packages/common/papercraft_protocol.h) -- carve the real wall
-       structure's own 15 real blocks out of chunk (0,0)'s normal solid render/ground-collision
-       path, so a real Paper Engine object (spawned below) can take its place instead. Scoped to
-       chunk (0,0) only -- see PC_CITY_WALL_A_*'s own doc comment for the full real rationale. */
-    {
-        int origin_idx = pw_world_index(0, 0);
-        if (origin_idx >= 0 && g_world.loaded[origin_idx]) {
-            int before = g_world.chunks[origin_idx].block_count;
-            pw_chunk_remove_box(&g_world.chunks[origin_idx],
-                                 PC_CITY_WALL_A_BLOCK_X0, PC_CITY_WALL_A_BLOCK_X1,
-                                 PC_CITY_WALL_A_BLOCK_Y0, PC_CITY_WALL_A_BLOCK_Y1,
-                                 PC_CITY_WALL_A_BLOCK_Z0, PC_CITY_WALL_A_BLOCK_Z1);
-            int removed = before - g_world.chunks[origin_idx].block_count;
-            printf("Real city-wall carve-out: removed %d real block(s) from chunk (0,0) -- a real Paper Engine object replaces them.\n", removed);
-        }
-    }
-
     /* Real, persisted world objects (packages/common/papercraft_worldobjects.h) -- graduates the
        original hardcoded single test cube (docs/NORTHSTAR_PAPER_ENGINE.md's own "What's
        explicitly not built yet" -- closing the "no hit-detection wiring" gap) into real,
@@ -420,11 +402,14 @@ int main(int argc, char **argv) {
             g_wo_file.objects[0].y = PC_DEFAULT_OBJECT_HALF_EXTENT;
         }
 
-        /* Real second default object -- the real, carved-out city wall (PC_CITY_WALL_A_*),
-           standing in exactly where its own real 15 VoxelBlocks used to be. Its own real
-           position/extents are already derived directly from that real block data (see the
-           constant's own doc comment), not ground-snapped like a normal editor placement. */
-        g_wo_file.count = 2;
+        /* Real second/third default objects -- the two real, carved-out city walls
+           (PC_CITY_WALL_A_* / PC_CITY_WALL_B_*), each standing in exactly where its own real 15
+           VoxelBlocks used to be. Real position/extents/carve bounds are already derived
+           directly from that real block data (see the constants' own doc comment), not
+           ground-snapped like a normal editor placement. Wired through the same real, general
+           has_carve/carve_* machinery apps/mapeditor's own --carve flag uses -- not a special
+           case. */
+        g_wo_file.count = 3;
         g_wo_file.objects[1].x = PC_CITY_WALL_A_X;
         g_wo_file.objects[1].y = PC_CITY_WALL_A_Y;
         g_wo_file.objects[1].z = PC_CITY_WALL_A_Z;
@@ -433,14 +418,57 @@ int main(int argc, char **argv) {
         g_wo_file.objects[1].half_y = PC_CITY_WALL_A_HALF_Y;
         g_wo_file.objects[1].half_z = PC_CITY_WALL_A_HALF_Z;
         g_wo_file.objects[1].seed = PC_CITY_WALL_A_SEED;
+        g_wo_file.objects[1].has_carve = 1;
+        g_wo_file.objects[1].carve_x0 = PC_CITY_WALL_A_BLOCK_X0;
+        g_wo_file.objects[1].carve_x1 = PC_CITY_WALL_A_BLOCK_X1;
+        g_wo_file.objects[1].carve_y0 = PC_CITY_WALL_A_BLOCK_Y0;
+        g_wo_file.objects[1].carve_y1 = PC_CITY_WALL_A_BLOCK_Y1;
+        g_wo_file.objects[1].carve_z0 = PC_CITY_WALL_A_BLOCK_Z0;
+        g_wo_file.objects[1].carve_z1 = PC_CITY_WALL_A_BLOCK_Z1;
+
+        g_wo_file.objects[2].x = PC_CITY_WALL_B_X;
+        g_wo_file.objects[2].y = PC_CITY_WALL_B_Y;
+        g_wo_file.objects[2].z = PC_CITY_WALL_B_Z;
+        g_wo_file.objects[2].material = PC_CITY_WALL_B_MATERIAL;
+        g_wo_file.objects[2].half_x = PC_CITY_WALL_B_HALF_X;
+        g_wo_file.objects[2].half_y = PC_CITY_WALL_B_HALF_Y;
+        g_wo_file.objects[2].half_z = PC_CITY_WALL_B_HALF_Z;
+        g_wo_file.objects[2].seed = PC_CITY_WALL_B_SEED;
+        g_wo_file.objects[2].has_carve = 1;
+        g_wo_file.objects[2].carve_x0 = PC_CITY_WALL_B_BLOCK_X0;
+        g_wo_file.objects[2].carve_x1 = PC_CITY_WALL_B_BLOCK_X1;
+        g_wo_file.objects[2].carve_y0 = PC_CITY_WALL_B_BLOCK_Y0;
+        g_wo_file.objects[2].carve_y1 = PC_CITY_WALL_B_BLOCK_Y1;
+        g_wo_file.objects[2].carve_z0 = PC_CITY_WALL_B_BLOCK_Z0;
+        g_wo_file.objects[2].carve_z1 = PC_CITY_WALL_B_BLOCK_Z1;
 
         if (!pc_worldobjects_save(g_world_objects_path, &g_wo_file)) {
             fprintf(stderr, "WARNING: could not save the real default world-objects file to %s\n", g_world_objects_path);
         }
-        printf("No real world-objects file at %s -- seeded 2 real default objects (test prop + carved-out city wall).\n", g_world_objects_path);
+        printf("No real world-objects file at %s -- seeded 3 real default objects (test prop + 2 carved-out city walls).\n", g_world_objects_path);
     } else {
         printf("Real world-objects file loaded from %s (%d object(s)).\n", g_world_objects_path, g_wo_file.count);
     }
+
+    /* Real, general, data-driven carve-out (packages/common/papercraft_worldobjects.h's own
+       has_carve/carve_* fields) -- any real object in the loaded/seeded list can carry real
+       carve bounds now, not just one hardcoded case. Runs once here, before any player connects,
+       same real "carve before render/collide" ordering the original single-wall version used. */
+    {
+        int origin_idx = pw_world_index(0, 0);
+        for (int i = 0; i < g_wo_file.count; i++) {
+            if (!g_wo_file.objects[i].has_carve) continue;
+            if (origin_idx < 0 || !g_world.loaded[origin_idx]) continue;
+            int before = g_world.chunks[origin_idx].block_count;
+            pw_chunk_remove_box(&g_world.chunks[origin_idx],
+                                 g_wo_file.objects[i].carve_x0, g_wo_file.objects[i].carve_x1,
+                                 g_wo_file.objects[i].carve_y0, g_wo_file.objects[i].carve_y1,
+                                 g_wo_file.objects[i].carve_z0, g_wo_file.objects[i].carve_z1);
+            int removed = before - g_world.chunks[origin_idx].block_count;
+            printf("Real city carve-out: object %d removed %d real block(s) from chunk (0,0).\n", i, removed);
+        }
+    }
+
     for (int i = 0; i < g_wo_file.count; i++) {
         paper_generate_box(&g_wo_mesh[i], g_wo_file.objects[i].half_x, g_wo_file.objects[i].half_y,
                             g_wo_file.objects[i].half_z, PC_WO_SUBDIV,

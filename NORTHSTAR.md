@@ -482,15 +482,18 @@ restart, the map editor, the embedded PARENA editor/modding toolchain, any of
 events). Destruction wiring, talent spending, multi-chunk traversal, player persistence across a restart,
 real jump + a first real trick input, a first real (offline-CLI) map editor, a documented +
 verified modding pipeline (`MODDING.md`), real world-object damage persistence across a restart,
-real non-cube base shapes, real interact damage falloff by distance, and a first real case of
-city-wall `VoxelBlock` integration (one real, named wall structure, `docs/
-NORTHSTAR_PAPER_ENGINE.md`'s own "Real first case of city-wall integration" section — not full-
-city conversion, a real bounded proof) are now real and shipped (see the sections above) — the
-embedded, in-game PARENA editor/modding toolchain (a real, no-rebuild-needed, in-game version of
-the modding pipeline; `MODDING.md`'s own "What's honestly not here yet" has the full real gap
-list), a real graphical/live-server map editor, real fragment physics/collision, and full-city
-`VoxelBlock` conversion (a real, data-driven "any block region can become destructible" system,
-not this pass's own one hardcoded case) remain real, later work, the same sequencing discipline
+real non-cube base shapes, real interact damage falloff by distance, a first real case of
+city-wall `VoxelBlock` integration (two real, named wall structures now, `docs/
+NORTHSTAR_PAPER_ENGINE.md`'s own "Real first case of city-wall integration" +
+"Real, general, data-driven carve-out now" sections — not full-city conversion, a real bounded
+proof), and the general, data-driven carve-out mechanism itself (any world object can carry real
+carve bounds now, proved live through `apps/mapeditor`'s own real `--carve` CLI, not just
+internal seeding) are now real and shipped (see the sections above) — the embedded, in-game
+PARENA editor/modding toolchain (a real, no-rebuild-needed, in-game version of the modding
+pipeline; `MODDING.md`'s own "What's honestly not here yet" has the full real gap list), a real
+graphical/live-server map editor, real fragment physics/collision, and full-city `VoxelBlock`
+conversion (every real block individually destructible, which the real wire budget genuinely
+can't support at that scale) remain real, later work, the same sequencing discipline
 `WEAKNIGHT_BEDROCK_RACERS` already used (its own Phase 0 shipped a single vehicle on one chunk
 before Phase 1 added a second vehicle or destruction).
 

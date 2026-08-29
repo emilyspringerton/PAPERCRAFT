@@ -286,6 +286,33 @@ own real toughness plus the real distance falloff now composed on top). A real s
 the object rendering correctly alongside the rest of the real city geometry, no double-render or
 gap artifacts.
 
+## Real, general, data-driven carve-out now (2026-08-29)
+
+Closes "a general data-driven carve-out system... stays real, later work" — the wall case above
+generalizes from one hardcoded `PC_CITY_WALL_A_*` special case into real, reusable
+`PcWorldObjectDef::has_carve`/`carve_x0..carve_z1` fields ANY world object can carry. Both
+`apps/server` and `apps/client` now carve via a single, general loop over every real object with
+`has_carve` set, not a one-off call. `apps/mapeditor` grew a real `--carve` flag
+(`--carve-x0/x1/y0/y1/z0/z1`) — Y auto-derives from the real carve box's own center height
+instead of ground-snapping. Proved with a real second wall: `PC_CITY_WALL_B_*` (the OTHER real
+~15-block structure at chunk-local `X∈{0,1}, Z∈{0,1}`, confirmed live the same way wall A was) is
+now auto-seeded alongside it — two real carved walls, not one, both through the same real path.
+
+Real, honest wire-budget accounting, not glossed over: adding `carve_*` as plain `int` fields
+would have pushed `sizeof(PcSnapshotPacket)` to 1488 bytes, past the real 1472-byte
+unfragmented-UDP budget this repo has tracked all session — caught before shipping, fixed by
+packing them as `unsigned char` (chunk-local block coordinates are always genuinely small),
+landing at a real, safe 1408 bytes instead.
+
+Verified live end to end: fresh server confirmed `"object 1 removed 15 real block(s)"` AND
+`"object 2 removed 15 real block(s)"` (30 total, both real walls); removed wall A via
+`mapeditor remove` and re-added it via the real `mapeditor add --carve` CLI path (not the
+server's own internal seeding code) — confirmed byte-identical resulting position/extent/carve
+bounds, restarted the server against that modder-edited file, confirmed it carved correctly from
+the new object order; a real UDP probe walked to wall B specifically and confirmed real damage
+registers on it (`5/96` damaged). The general mechanism works through the actual public map
+editor interface, not just internal seeding.
+
 ## What's explicitly not built yet
 
 Real server-authoritative physics/collision for a detached fragment (the client-side debris above
@@ -294,11 +321,10 @@ client simulates its own copy independently), no real weapon/combat system beyon
 with distance falloff (`PC_PACKET_INTERACT` still carries no aim/spread/weapon-type data), only
 one real scalar `subdiv` per object (uneven fragment density on a strongly non-uniform box, see
 above), and only a small, editor-placed set of real objects (`apps/mapeditor`,
-`PC_WO_MAX_OBJECTS=4`) — a general "any real `VoxelBlock` region can become a real destructible
-object" system (this pass hardcoded one real, named case, `PC_CITY_WALL_A_*`, not a data-driven
-carve-out pipeline), full-city conversion, and a real L-shaped/multi-part object matching the
-carved wall's own exact real footprint (rather than its bounding-box approximation) are all
-separate, future work. The
+`PC_WO_MAX_OBJECTS=4`) — full-city conversion (every real `VoxelBlock` individually destructible,
+which the real wire budget genuinely can't support at this scale) and a real L-shaped/multi-part
+object matching a carved wall's own exact real footprint (rather than its bounding-box
+approximation) remain separate, future work. The
 bare-punch hit-detection gap named in an earlier draft of this section
 is now closed — see "Live-wired into the actual game loop" above. Real Phase 1 sequencing for the
 remaining items above is separate, future work, matching this repo's own "docs before software,
