@@ -238,9 +238,24 @@ jobs:
       # resolved, `clang --version`, the actual compile) is wrapped in one `{ ... } > build.log
       # 2>&1` block, so whatever actually fails, everything that ran before it is captured too --
       # not just the one command that happened to be last.
+      # Real root cause of THIS session's own inability to see any real error text, found from a
+      # founder-pasted real log (2026-08-29): GitHub Actions always invokes a `shell: bash` step
+      # as `bash --noprofile --norc -e -o pipefail {0}` -- that `-e` is imposed at the OUTER shell
+      # invocation, outside this script's own control, and it applies to commands inside a `{ }`
+      # brace group exactly the same as top-level commands. So the previous attempt's own `clang`
+      # failure inside `{ ... } > build.log 2>&1` killed the whole script immediately, right there
+      # -- `status=$?`, `cat build.log`, and the `::error::` loop below it NEVER ran. Every one of
+      # this job's own diagnostics was captured into build.log exactly as designed, then the
+      # script died before anything printed it. `set +e` here is the real fix: it explicitly turns
+      # OFF the externally-imposed `-e` for the rest of THIS script, so a failing command inside
+      # the `{ }` group no longer terminates it -- `status=$?` correctly captures the real failure,
+      # `cat build.log` finally prints the real captured output, and the `::error::` loop finally
+      # promotes it to a real, retrievable check-run annotation, before this step still correctly
+      # fails via the trailing `exit $status`.
       - name: Build papercraft_client (macOS)
         shell: bash
         run: |
+          set +e
           set -o pipefail
           {
             echo "=== brew --prefix sdl2 ==="
