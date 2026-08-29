@@ -872,6 +872,93 @@ see the BACKLOG's own next item for the full real fix (a real ticket secret, a r
 `papercraft-server.service` systemd unit, matching the exact pattern
 `weaknight-racers-server.service` already established).
 
+## Real live-server readiness — the founder's own first real play session (2026-08-29)
+
+Founder real-time, the full arc: "make sure the server is ready for me" → "black screen flash for
+a moment" → "ok i need a PlayOnline bat" → "ok that doesnt work either" → "ok well can we double
+check the firewall?" → "maybe add more verbose logging?" → "ok it works kinda this is huge we got
+past the login screen we are in the world" → "the first issue is constant flickering... connection
+lost reconnecting". This is the real, full story of PAPERCRAFT's actual first live player, working
+through a real chain of genuine, distinct bugs — several with no real, honest way to have caught
+them before a real human played over a real internet connection, not this environment's own
+Linux-only, no-live-Xvfb, localhost-only verification tier.
+
+1. **No `papercraft_server` was ever running.** New `ops/systemd/papercraft-server.service` (same
+   real pattern `weaknight-racers-server.service` already established) — real, supervised,
+   `Restart=on-failure`. `PAPERCRAFT_TICKET_SECRET` had never been set in IDUNA's own env either
+   (every sibling game already had one; PAPERCRAFT's own never did) — added, matching every other
+   ticket secret's own 64-hex-char convention.
+2. **The deployed IDUNA binary predated the papercraft ticket handler's own commit entirely** —
+   `POST /api/v1/papercraft/ticket` returned a bare 404, not the "not configured" 503 the first
+   fix assumed. Found by comparing the binary's build timestamp against the handler's own commit
+   date; fixed by rebuilding `~/.local/bin/iduna` from current `HEAD` in place. Confirmed live via
+   a full real login → mint-ticket → UDP CONNECT → real WELCOME round trip against the real
+   `test@test.com` account (a real, pre-existing, working IDUNA test account, confirmed live this
+   session) — a real, throwaway C UDP probe, same real methodology this whole session's own
+   Phase 1 work already established.
+3. **The firewall.** `apps/client` defaults every host flag to `localhost` — the player's own
+   machine when running a downloaded release binary, not this box. New
+   `37-papercraft-server-firewall.sh` opens `7799/udp`/`7070/tcp`/`8080/tcp`. Verified externally
+   via `check-host.net` from multiple diverse regions per port (not just a local check, which
+   can't detect a real firewall gap at all — traffic from `localhost` never touches `ufw`).
+4. **`PLAY_ONLINE.bat`/`.sh`** — bakes in the real public host flags (`okemily.com`, a real,
+   existing plain A record pointing straight at this box, chosen over a raw IP literal so a
+   released binary doesn't go stale if this box's own IP ever changes) so a player doesn't need a
+   command line at all.
+5. **`papercraft_client.log`** — stdout/stderr redirected to a real file next to the exe at the
+   very top of `main()`. Necessary because `PLAY_ONLINE.bat`'s own `start` opens a console that
+   closes itself the instant the process exits, losing every real diagnostic on a fast failure.
+6. **Verbose `[http]` logging in `packages/common/http_client.h`** (both the Windows/Winsock and
+   POSIX branches) — every real failure point (resolve/connect/send/recv/status-parse) now logs
+   its own real WSA-error-code/errno detail instead of a shared, undifferentiated failure return.
+7. **The real root cause, finally found from that logging: a genuine Windows `WSAStartup`
+   ordering bug**, real WSA error `10093` (`WSANOTINITIALISED`) on the client's first
+   `getaddrinfo()` call. `WSAStartup()` ran later in `main()` (right before `SDL_Init`) than the
+   real, mandatory worldapi chunk fetch that needed it first. This was **never actually a
+   firewall/DNS/network-reachability problem** — the entire external multi-region firewall
+   investigation (step 3, genuinely real and genuinely necessary on its own terms) was chasing a
+   real but different, unrelated bug the whole time; the real fix was moving one `#ifdef _WIN32`
+   block earlier in the file. Only became findable once step 6's own logging gave a real error
+   *code* to look up instead of one generic, undifferentiated FATAL line — the single clearest
+   real justification this whole saga produced for "add verbose logging" as a first move, not a
+   last resort, the next time a real, reproducible failure resists a few rounds of blind fixes.
+8. **Real progress, real new bug: the connection-loss flicker, then a real design flaw the first
+   fix alone exposed.** Once past login, `apps/client`'s own `PC_CLIENT_STALE_MS` (5000ms, tuned
+   only ever against localhost's own zero-latency, zero-loss path) was tripping on ordinary real
+   internet jitter/loss bursts, worse on the founder's own real 5G/limited-bandwidth connection —
+   losing ~100 consecutive 20Hz snapshots inside 5 real seconds is a comfortably-possible real
+   event on a real path, and because the resulting reconnect can land in well under a second once
+   the burst passes, the visible symptom is a real, repeated flash, not one clean drop. A first fix
+   (doubling to 10000ms alone) made it worse in a different way — founder: "this version i cant do
+   anything its just flickering screen but i can see the environment" / "this version is non
+   interactive the previous version i could move forward". Real root design flaw, not just a wrong
+   constant: dropping `welcomed` to 0 the instant staleness was detected ALSO gated real USERCMD
+   sending off, so every real receive-side stall — however brief — stopped real movement input
+   from transmitting at all until a fresh WELCOME landed, on top of swapping the full 3D scene out
+   for a real full-screen takeover. Neither reaction was ever actually necessary for an ordinary
+   stall: the server only evicts a slot after 30s of no real USERCMD, so a client that just kept
+   sending the whole time, unconditionally, would let a real transient stall self-heal the instant
+   packets resume, with no visible interruption at all. Real, three-tier redesign: (1) a new,
+   sticky `ever_welcomed` flag (set once on the first real WELCOME, never cleared) now gates real
+   USERCMD/ability/interact sending instead of the live, momentarily-false `welcomed` — real input
+   now keeps transmitting through any real receive-side stall, however long; (2) a short
+   `PC_CLIENT_WEAK_MS` (2000ms) now only ever drives a real, small, non-disruptive on-screen
+   indicator drawn on top of the still-rendering 3D scene, showing the real elapsed gap in whole
+   seconds — nothing flashes on and off, nothing blocks input; (3) the real, disruptive full-screen
+   takeover and an actual forced CONNECT resend is now a genuine last resort, raised to 20000ms
+   (close to the server's own real 30s eviction window) since continuous sending (tier 1) already
+   has a real, long chance to self-heal a stall well before this tier is ever reached. Not yet
+   confirmed against the founder's own next real play session as of this doc's own last edit.
+
+Real, honest verification-tier note repeated one more time because it matters here more than
+anywhere else in this doc: every one of these real fixes was verified as thoroughly as this
+Linux-only, no-live-Xvfb, no-live-Windows-host environment allows (raw-gcc/raw-mingw-gcc compiles,
+`bazel test //...`, real UDP/HTTP probes, real external multi-region reachability checks) — but
+the founder's own real Windows machine, playing over their own real internet connection (their own
+real 5G/limited-bandwidth path, the harshest real condition this whole saga was tuned against), is
+the one verification tier this environment has never been able to substitute for, and every real
+bug in this list is one that tier alone actually surfaced.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled

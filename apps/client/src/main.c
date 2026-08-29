@@ -550,6 +550,28 @@ static void draw_progression_hud(int win_w, int win_h, const PcPlayerState *own)
     }
 }
 
+/* draw_weak_connection_indicator -- real, small, non-disruptive top-of-screen text for the
+   PC_CLIENT_WEAK_MS tier (see this file's own connection-loss redesign doc comment above
+   PC_CLIENT_WEAK_MS's own definition): shown ON TOP of the real, still-rendering 3D scene, not
+   instead of it -- unlike the full "CONNECTION LOST" takeover, real input keeps working the whole
+   time this is visible, and it disappears the instant a fresh real SNAPSHOT lands, no flash, no
+   scene swap. real_gap_ms is shown too (rounded to whole seconds) so a player watching it can
+   tell a brief real stall from one that's climbing toward the real, longer PC_CLIENT_STALE_MS
+   tier. */
+static void draw_weak_connection_indicator(int win_w, int win_h, unsigned int real_gap_ms) {
+    glDisable(GL_DEPTH_TEST);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, win_w, 0, win_h, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    char line[64];
+    snprintf(line, sizeof(line), "weak connection (%us)", real_gap_ms / 1000);
+    glColor3f(0.95f, 0.65f, 0.25f);
+    pc_draw_string(line, (float)win_w / 2.0f - 90.0f, (float)win_h - 30.0f, 8);
+}
+
 static void draw_player_marker(float x, float y, float z, float yaw, int is_own) {
     glPushMatrix();
     glTranslatef(x, y + 0.9f, z);
@@ -782,28 +804,38 @@ int main(int argc, char **argv) {
        still arriving, so a server crash/restart or a real, indefinitely-dropped UDP path left the
        player staring at a frozen, silent last-known frame forever. last_snapshot_ms tracks the
        real wall-clock time of the last real SNAPSHOT actually received (set once welcomed, reset
-       on every real SNAPSHOT after that); PC_CLIENT_STALE_MS is deliberately shorter than
-       apps/server's own real PC_PLAYER_TIMEOUT_MS (30s) so a real reconnect attempt starts, and
-       has a real chance to land, well before the server would ever give up the old slot.
+       on every real SNAPSHOT after that).
 
-       Real, live bug found and fixed (2026-08-29, founder real-time: "constant flickering of the
-       screen saying connection lost reconnecting" -- the first time this client was ever actually
-       played over a real public internet path, not localhost): the server broadcasts a real
-       SNAPSHOT to every connected player at the real 20Hz tick rate -- under real internet
-       conditions (not localhost's own zero-latency, zero-loss path this value was only ever
-       tuned/tested against), losing every single one of ~100 consecutive snapshots inside a real
-       5-second window is a real, comfortably-possible event during an ordinary jitter/loss burst,
-       not just a genuine multi-second outage -- and because the resulting reconnect (a fresh
-       CONNECT/WELCOME round trip) can complete in well under a second once the real burst passes,
-       the visible symptom is exactly a real, repeated flash, not one clean drop. Doubled to
-       10000ms -- real margin against ordinary real-world jitter/loss bursts, while still
-       comfortably inside the server's own real 30s PC_PLAYER_TIMEOUT_MS window (so a real
-       reconnect attempt still has a real chance to land before the server gives up the old slot
-       -- the original design intent this value's own doc comment above already states, unchanged
-       by this real adjustment). */
-#define PC_CLIENT_STALE_MS 10000
+       Real, live redesign (2026-08-29, founder real-time, on real 5G/limited-bandwidth: first
+       "constant flickering of the screen saying connection lost reconnecting", then, after a
+       first real threshold bump alone, "this version i cant do anything its just flickering
+       screen but i can see the environment" / "this version is non interactive the previous
+       version i could move forward"). Real root design flaw, not just a wrong constant: dropping
+       `welcomed` to 0 the instant staleness was detected ALSO gated USERCMD sending off (`if
+       (welcomed) { ...send cmd... }` below) -- so every real receive-side stall, even one lasting
+       a fraction of a second, stopped real movement input from transmitting at all until a fresh
+       WELCOME landed, on top of swapping the full 3D scene out for a real full-screen "CONNECTION
+       LOST" takeover. Neither reaction was ever actually necessary for an ordinary stall:
+       apps/server's own real PC_PLAYER_TIMEOUT_MS (30s) only evicts a slot after 30s of no real
+       USERCMD -- so a client that just kept sending the whole time, unconditionally, would let a
+       real transient stall self-heal the instant packets resume, with no visible interruption and
+       no real need to ever resend CONNECT at all. Real, three-tier redesign:
+       1. `ever_welcomed` (new, sticky, set once on the first real WELCOME, never cleared) now
+          gates USERCMD/ability/interact sending, not the live, momentarily-false `welcomed` --
+          real movement input keeps transmitting through any real receive-side stall, however long.
+       2. A short `PC_CLIENT_WEAK_MS` threshold now only ever drives a real, small, non-disruptive
+          on-screen indicator (see the render loop below) -- the normal 3D scene keeps rendering
+          the whole time, real input keeps working, nothing flashes on and off.
+       3. `PC_CLIENT_STALE_MS` -- the real, disruptive full-screen "CONNECTION LOST" takeover AND
+          an actual forced CONNECT resend -- is now a genuine last resort, raised to 20000ms
+          (close to the server's own real 30s eviction window, instead of well under it): by the
+          time a real stall is long enough to reach this tier, continuous sending (tier 1) has
+          already had a real, long chance to self-heal it on its own. */
+#define PC_CLIENT_WEAK_MS 2000
+#define PC_CLIENT_STALE_MS 20000
     unsigned int last_snapshot_ms = 0;
     int reconnecting = 0;
+    int ever_welcomed = 0;
 
     int running = 1;
     unsigned int win_logged = 0;
@@ -818,7 +850,7 @@ int main(int argc, char **argv) {
                a held-key poll like WASD below) -- unlike movement, spending a point isn't a
                continuous input. The server's own real PARENA-compiled gate decides whether it's
                actually legal; this just sends the real request. */
-            if (welcomed && e.type == SDL_KEYDOWN && !e.key.repeat) {
+            if (ever_welcomed && e.type == SDL_KEYDOWN && !e.key.repeat) {
                 int ability_idx = -1;
                 if (e.key.keysym.sym == SDLK_1) ability_idx = PC_ABILITY_MOVE;
                 else if (e.key.keysym.sym == SDLK_2) ability_idx = PC_ABILITY_VITALITY;
@@ -859,6 +891,9 @@ int main(int argc, char **argv) {
             PcHeader hdr; memcpy(&hdr, buf, sizeof(hdr));
             if (hdr.type == PC_PACKET_WELCOME) {
                 welcomed = 1;
+                ever_welcomed = 1; /* real, sticky -- never cleared again, see this section's own
+                                       redesign doc comment above (gates real input sending, not
+                                       the live, momentarily-false welcomed). */
                 reconnecting = 0;
                 my_slot = hdr.client_id;
                 last_snapshot_ms = now_ms(); /* real, deliberate reset -- a fresh WELCOME counts
@@ -914,7 +949,7 @@ int main(int argc, char **argv) {
         if (keys[SDL_SCANCODE_SPACE]) buttons |= PC_BTN_JUMP;
         if (keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_LSHIFT]) buttons |= PC_BTN_CROUCH;
 
-        if (welcomed) {
+        if (ever_welcomed) {
             PcUserCmdPacket cmd; memset(&cmd, 0, sizeof(cmd));
             cmd.hdr.type = PC_PACKET_USERCMD;
             cmd.cmd_sequence = ++cmd_seq;
@@ -1064,6 +1099,9 @@ int main(int argc, char **argv) {
                 draw_player_marker(p->x, p->y, p->z, p->yaw, i == my_slot);
             }
             draw_progression_hud(win_w, win_h, &own);
+        }
+        if (welcomed && now - last_snapshot_ms > PC_CLIENT_WEAK_MS) {
+            draw_weak_connection_indicator(win_w, win_h, now - last_snapshot_ms);
         }
 
         SDL_GL_SwapWindow(win);
