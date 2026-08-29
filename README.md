@@ -90,6 +90,7 @@ Place/inspect real world objects offline:
 ```bash
 ./bazel-bin/apps/mapeditor/mapeditor list
 ./bazel-bin/apps/mapeditor/mapeditor add <x> <z> --material concrete
+./bazel-bin/apps/mapeditor/mapeditor edit <index> --material metal --seed 42
 ```
 
 Controls: WASD to move, Space to jump (hold Ctrl/Shift + tap Space for a real slide-jump boost),

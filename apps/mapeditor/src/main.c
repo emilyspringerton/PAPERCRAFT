@@ -51,6 +51,18 @@ static void print_usage(void) {
         "                    --carve-z0 <n> --carve-z1 <n>]\n"
         "                   [--file <path>] [--worldapi-host <h>] [--worldapi-port <p>]\n"
         "  mapeditor remove <index> [--file <path>]\n"
+        "  mapeditor edit   <index> [--x <f>] [--y <f>] [--z <f>]\n"
+        "                   [--material paper|wood|concrete|metal] [--seed <n>]\n"
+        "                   [--half-extent <f>] [--half-x <f>] [--half-y <f>] [--half-z <f>]\n"
+        "                   [--file <path>]\n"
+        "\n"
+        "  edit changes only the real fields you actually give a flag for, in place, at the same\n"
+        "  real index -- everything else (including any real carve bounds) stays byte-identical.\n"
+        "  No ground re-snap and no carve-box re-validation happen here (unlike add) -- a real,\n"
+        "  deliberately simple, predictable field-level edit, not a smart re-placement. Bare\n"
+        "  'mapeditor edit <index>' with no value flags just prints that object's real current\n"
+        "  fields and changes nothing. Warns (doesn't block), same as add, if the edited real\n"
+        "  bounding box now overlaps another object's.\n"
         "\n"
         "  --file defaults to var/world/objects.dat (same real default apps/server uses).\n"
         "  --half-extent sets all three real per-axis half-extents at once (a uniform cube);\n"
@@ -116,6 +128,80 @@ static int cmd_remove(const char *path, int index) {
         return 1;
     }
     printf("Removed real object %d from %s -- %d object(s) remain.\n", index, path, wf.count);
+    return 0;
+}
+
+static int aabb_overlap(float ax, float ay, float az, float ahx, float ahy, float ahz,
+                         float bx, float by, float bz, float bhx, float bhy, float bhz);
+
+/* cmd_edit: real, minimal in-place field edit -- closes a real, honestly-missing capability
+   (previously the only way to change an already-placed object's own position/material/seed/
+   extents was `remove` + `add`, which reassigns it a NEW index at the end of the list, silently
+   breaking any real per-object damage state already saved for the OLD index in the damage file
+   apps/server writes -- see packages/common/papercraft_worldobjects.h's own PcWorldDamageFile,
+   indexed by object slot). Deliberately simple: only the real fields a flag was actually given
+   for change, at the SAME real index, with no ground re-snap and no carve re-validation (unlike
+   add) -- a real, predictable field-level edit, not a smart re-placement. */
+static int cmd_edit(const char *path, int index,
+                     int x_given, float x, int y_given, float y, int z_given, float z,
+                     int material_given, int material, int seed_given, unsigned int seed,
+                     int half_x_given, float half_x, int half_y_given, float half_y,
+                     int half_z_given, float half_z) {
+    PcWorldObjectFile wf;
+    if (!pc_worldobjects_load(path, &wf)) {
+        fprintf(stderr, "No real world-objects file at %s -- nothing to edit.\n", path);
+        return 1;
+    }
+    if (index < 0 || index >= wf.count) {
+        fprintf(stderr, "Real index %d out of range -- file has %d object(s) (0..%d).\n", index, wf.count, wf.count - 1);
+        return 1;
+    }
+    PcWorldObjectDef *def = &wf.objects[index];
+
+    if (!x_given && !y_given && !z_given && !material_given && !seed_given &&
+        !half_x_given && !half_y_given && !half_z_given) {
+        printf("Real object %d, no changes given -- current fields:\n", index);
+        printf("  pos=(%.2f,%.2f,%.2f) material=%s half=(%.2f,%.2f,%.2f) seed=%u",
+               def->x, def->y, def->z, material_name(def->material), def->half_x, def->half_y, def->half_z, def->seed);
+        if (def->has_carve) {
+            printf(" carve=[%d,%d]x[%d,%d]x[%d,%d]",
+                   def->carve_x0, def->carve_x1, def->carve_y0, def->carve_y1, def->carve_z0, def->carve_z1);
+        }
+        printf("\n");
+        return 0;
+    }
+
+    if (x_given) def->x = x;
+    if (y_given) def->y = y;
+    if (z_given) def->z = z;
+    if (material_given) def->material = material;
+    if (seed_given) def->seed = seed;
+    if (half_x_given) def->half_x = half_x;
+    if (half_y_given) def->half_y = half_y;
+    if (half_z_given) def->half_z = half_z;
+
+    /* Same real, minimal editor-safety overlap warning `add` already does -- checked against
+       every OTHER real object, not itself. */
+    for (int i = 0; i < wf.count; i++) {
+        if (i == index) continue;
+        const PcWorldObjectDef *other = &wf.objects[i];
+        if (aabb_overlap(def->x, def->y, def->z, def->half_x, def->half_y, def->half_z,
+                          other->x, other->y, other->z, other->half_x, other->half_y, other->half_z)) {
+            fprintf(stderr, "WARNING: edited object %d's real bounding box now overlaps object %d (pos=(%.2f,%.2f,%.2f) half=(%.2f,%.2f,%.2f)) -- saving anyway.\n",
+                    index, i, other->x, other->y, other->z, other->half_x, other->half_y, other->half_z);
+        }
+    }
+
+    if (!pc_worldobjects_save(path, &wf)) {
+        fprintf(stderr, "FATAL: could not save %s after editing object %d.\n", path, index);
+        return 1;
+    }
+    printf("Edited real object %d in %s -- pos=(%.2f,%.2f,%.2f) material=%s half=(%.2f,%.2f,%.2f) seed=%u.\n",
+           index, path, def->x, def->y, def->z, material_name(def->material), def->half_x, def->half_y, def->half_z, def->seed);
+    if (def->has_carve) {
+        printf("  (real carve bounds [%d,%d]x[%d,%d]x[%d,%d] unchanged -- edit never touches them.)\n",
+               def->carve_x0, def->carve_x1, def->carve_y0, def->carve_y1, def->carve_z0, def->carve_z1);
+    }
     return 0;
 }
 
@@ -254,6 +340,46 @@ int main(int argc, char **argv) {
             if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) snprintf(path, sizeof(path), "%s", argv[++i]);
         }
         return cmd_remove(path, index);
+    }
+
+    if (strcmp(cmd, "edit") == 0) {
+        if (argc < 3) { print_usage(); return 1; }
+        int index = atoi(argv[2]);
+        int x_given = 0, y_given = 0, z_given = 0, material_given = 0, seed_given = 0;
+        int half_x_given = 0, half_y_given = 0, half_z_given = 0;
+        float x = 0, y = 0, z = 0, half_x = 0, half_y = 0, half_z = 0;
+        int material = 0;
+        unsigned int seed = 0;
+        for (int i = 3; i < argc; i++) {
+            if (strcmp(argv[i], "--x") == 0 && i + 1 < argc) {
+                x = (float)atof(argv[++i]); x_given = 1;
+            } else if (strcmp(argv[i], "--y") == 0 && i + 1 < argc) {
+                y = (float)atof(argv[++i]); y_given = 1;
+            } else if (strcmp(argv[i], "--z") == 0 && i + 1 < argc) {
+                z = (float)atof(argv[++i]); z_given = 1;
+            } else if (strcmp(argv[i], "--material") == 0 && i + 1 < argc) {
+                int m = parse_material(argv[++i]);
+                if (m < 0) { fprintf(stderr, "Unknown material '%s' -- use paper|wood|concrete|metal.\n", argv[i]); return 1; }
+                material = m; material_given = 1;
+            } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
+                seed = (unsigned int)strtoul(argv[++i], NULL, 10); seed_given = 1;
+            } else if (strcmp(argv[i], "--half-extent") == 0 && i + 1 < argc) {
+                float v = (float)atof(argv[++i]);
+                half_x = v; half_y = v; half_z = v;
+                half_x_given = 1; half_y_given = 1; half_z_given = 1;
+            } else if (strcmp(argv[i], "--half-x") == 0 && i + 1 < argc) {
+                half_x = (float)atof(argv[++i]); half_x_given = 1;
+            } else if (strcmp(argv[i], "--half-y") == 0 && i + 1 < argc) {
+                half_y = (float)atof(argv[++i]); half_y_given = 1;
+            } else if (strcmp(argv[i], "--half-z") == 0 && i + 1 < argc) {
+                half_z = (float)atof(argv[++i]); half_z_given = 1;
+            } else if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
+                snprintf(path, sizeof(path), "%s", argv[++i]);
+            }
+        }
+        return cmd_edit(path, index, x_given, x, y_given, y, z_given, z,
+                         material_given, material, seed_given, seed,
+                         half_x_given, half_x, half_y_given, half_y, half_z_given, half_z);
     }
 
     if (strcmp(cmd, "add") == 0) {

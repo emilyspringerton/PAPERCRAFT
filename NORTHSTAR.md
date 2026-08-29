@@ -222,7 +222,7 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   into the real host game loop this repo still doesn't have.
 - **A real map editor, built in from day 0, PARENA-powered — first real pass shipped
   (2026-08-28).** Founder: "build the map editor in from day 0" / "parena powered." New
-  `apps/mapeditor` — a real, minimal, offline CLI tool (`mapeditor add/list/remove`) that places
+  `apps/mapeditor` — a real, minimal, offline CLI tool (`mapeditor add/list/remove/edit`) that places
   real Paper Engine destructible props (`packages/common/papercraft_worldobjects.h`) into a real,
   persisted world-objects file `apps/server` loads at startup, real-ground-snapping each
   placement via a live `worldapi` lookup (fails closed on unreachable/missing terrain, same
@@ -252,7 +252,13 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   `apps/mapeditor` since grew a real `--carve` flag and AABB overlap warnings (2026-08-29, see
   `docs/NORTHSTAR_PAPER_ENGINE.md`'s own "Real, general, data-driven carve-out now" section) —
   real integration with the city's own `VoxelBlock` geometry is real now for two named wall
-  structures, not the whole city yet.
+  structures, not the whole city yet. Also since grew a real `edit` command (2026-08-29): a
+  real, field-level in-place edit at the same object index — `remove` + `add` was previously the
+  only way to change an already-placed object, which silently reassigns it a NEW index and
+  breaks any real per-object damage state already saved for the OLD index
+  (`packages/common/papercraft_worldobjects.h`'s own `PcWorldDamageFile`, keyed by slot).
+  Deliberately simple, not a smart re-placement: only the real fields a flag was actually given
+  for change, no ground re-snap, no carve-box re-validation, real carve bounds always untouched.
 
 ## The real, longer-arc modding vision
 
