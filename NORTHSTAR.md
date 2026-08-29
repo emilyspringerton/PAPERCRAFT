@@ -851,6 +851,27 @@ only, both fully verified end-to-end on real GitHub Actions runners; macOS is no
 this ever gets revisited, the `set +e` fix (the actual final diagnostic step, never confirmed
 against a real run) is the right starting point, not another blind guess.
 
+**Confirmed: the repair run succeeded end to end.** GitHub Actions run `33273108697` (commit
+`0de8563`) — the one that repaired the dangling `build_macos` references — passed all four real
+jobs (`test`, `build_linux`, `build_windows`, `release`), and cut a real first GitHub Release:
+`v0.1.0`, published `2026-08-29T20:20:00Z`, carrying `papercraft-linux-x86_64.tar.gz` and
+`papercraft-windows-x86_64.zip` as real, downloadable assets. This closes S206-53 for real — a
+working, founder-verified, end-to-end CI + release pipeline for `apps/client` + `apps/mapeditor`
+on Linux and Windows.
+
+**Immediate follow-up, same day: the founder actually downloaded and ran the real `v0.1.0`
+client, and hit a real, separate gap.** The client itself worked — logged in, then flashed
+"Ticket mint failed (server said 503)." (confirmed by reading `apps/client/src/main.c`'s own
+`pc_mint_ticket` error text against the founder's own description, "it flashes some text on the
+screen failure something"). Real root cause: `PAPERCRAFT_TICKET_SECRET` had never actually been
+set in IDUNA's own env (`~/.config/iduna/env`) — every sibling game
+(`SHANKPIT_TICKET_SECRET`/`REDGARDEN_TICKET_SECRET`/`RACER_TICKET_SECRET`) already had one,
+PAPERCRAFT's own never did, and no `papercraft_server` process was running at all either. This is
+real live-service deployment work, a separate concern from the CI pipeline this section covers —
+see the BACKLOG's own next item for the full real fix (a real ticket secret, a real supervised
+`papercraft-server.service` systemd unit, matching the exact pattern
+`weaknight-racers-server.service` already established).
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled
