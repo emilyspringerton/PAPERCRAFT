@@ -3,7 +3,11 @@
 // (itself ported from shankpit-460's real, RFC-4231-verified
 // implementation) -- same real reasoning applies here: this repo has no
 // crypto library linked, and a single keyed-hash comparison doesn't justify
-// adding one (EMILY/BACKLOG.md S156-02).
+// adding one (EMILY/BACKLOG.md S156-02). The RFC 4231 verification itself
+// made that trip only as a claim, not as a real test, through every repo in
+// the chain until 2026-08-29 -- this repo's own hmac_sha256_test.c (a real
+// `bazel test //packages/common:hmac_sha256_test`) is the first of them to
+// actually wire the real test vectors into a build.
 //
 // Used for this repo's own connect-ticket verification: IDUNA mints a
 // short-lived ticket (player_id + expiry + HMAC over both) after a player

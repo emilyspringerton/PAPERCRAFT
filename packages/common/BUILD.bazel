@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 # common_headers -- the real header-only bag every apps/* binary's own relative-path #include
 # needs declared as a Bazel input somewhere in its dep graph. Same real shape
@@ -16,4 +16,14 @@ cc_library(
         "papercraft_worldobjects.h",
     ],
     visibility = ["//visibility:public"],
+)
+
+# hmac_sha256_test -- real RFC 4231 test-vector coverage for this repo's own real connect-ticket
+# HMAC (apps/server/src/main.c's own verify_connect_ticket), ported from shankpit-460's own real,
+# never-before-wired-into-a-build hmac_sha256_test.c. Zero deps beyond the header itself -- pure,
+# deterministic crypto math, no sockets/files, same real reason paper_mesh_test.c gets a cc_test
+# instead of relying on live verification the way apps/server's own host-plumbing code does.
+cc_test(
+    name = "hmac_sha256_test",
+    srcs = ["hmac_sha256_test.c", "hmac_sha256.h"],
 )
