@@ -148,6 +148,25 @@ static void handle_shutdown_signal(int sig) {
     g_shutdown_requested = 1;
 }
 
+/* g_mods_reload_requested: real SIGHUP handler, same signal-safe "set a flag, do the actual work
+   in the main loop" discipline as g_shutdown_requested above -- closes MODDING.md's own
+   honestly-named "No live-server reload" gap for the one real piece of live state that's actually
+   SAFE to reload without a restart: the dynamically-loaded mods manifest. World-object edits
+   (apps/mapeditor) still need a real restart -- that reload is a real, separate, harder problem
+   (existing per-object state is keyed by array INDEX everywhere -- g_wo_mesh[i],
+   g_wo_destroyed_awarded[i], a connected player's own current interact target -- and a map edit
+   that changes the real object count or ordering would silently desync all of that; not attempted
+   here). The mods manifest has no such problem: g_mod_registry is keyed by function NAME, not
+   slot index, so dropping every real registration and re-running load_mods_manifest from scratch
+   is always safe, and this server is single-threaded with no reentrancy -- the actual reload work
+   only ever runs between ticks in the main loop, never while a real gameplay call site (see
+   on_papercraft_xp_for_object_destroyed's own real call site) is mid-call. */
+static volatile sig_atomic_t g_mods_reload_requested = 0;
+static void handle_reload_signal(int sig) {
+    (void)sig;
+    g_mods_reload_requested = 1;
+}
+
 /* save_player: writes one real player's own current progression + position to disk, matching the
    real PcSaveRecord shape packages/common/papercraft_persist.h defines. A no-op for a slot that
    never carried a real player_id (shouldn't happen in practice -- every active slot gets one on
@@ -311,6 +330,29 @@ static void load_mods_manifest(const char *path) {
     fclose(f);
     printf("Real mods manifest %s: %d mod(s) registered, %d distinct .so file(s) loaded.\n",
            path, g_mod_registry_count, g_mod_lib_count);
+}
+
+/* reload_mods_manifest: the real SIGHUP handler's own real work (see g_mods_reload_requested's
+   own doc comment above for why this is safe -- name-keyed registry, no reentrancy). dlcloses
+   every currently-loaded .so before reopening any of them, not just re-dlsym-ing into the same
+   handles -- dlopen() on an already-open path returns the SAME cached mapping (refcounted by the
+   real dynamic linker), so without a real dlclose first, a modder who rebuilt a .so in place
+   would silently keep running the OLD code. A no-op, not an error, if --mods-manifest was never
+   given -- there is nothing real to reload. */
+static void reload_mods_manifest(void) {
+    if (!g_mods_manifest_path[0]) {
+        printf("Real SIGHUP received -- no --mods-manifest was given at startup, nothing to reload.\n");
+        return;
+    }
+    printf("Real SIGHUP received -- reloading mods manifest %s...\n", g_mods_manifest_path);
+    int old_registry_count = g_mod_registry_count;
+    int old_lib_count = g_mod_lib_count;
+    for (int i = 0; i < g_mod_lib_count; i++) dlclose(g_mod_libs[i].handle);
+    g_mod_lib_count = 0;
+    g_mod_registry_count = 0;
+    load_mods_manifest(g_mods_manifest_path);
+    printf("Real mods manifest reload complete: %d mod(s)/%d .so file(s) -> %d mod(s)/%d .so file(s).\n",
+           old_registry_count, old_lib_count, g_mod_registry_count, g_mod_lib_count);
 }
 
 /* Connect-ticket secret -- direct port of WEAKNIGHT_BEDROCK_RACERS' own real
@@ -503,6 +545,7 @@ int main(int argc, char **argv) {
     printf("Real player persistence dir: %s\n", g_save_dir);
     signal(SIGINT, handle_shutdown_signal);
     signal(SIGTERM, handle_shutdown_signal);
+    signal(SIGHUP, handle_reload_signal);
 
     printf("PAPERCRAFT server (single-node persistent) -- fetching real %dx%d chunk grid from worldapi %s:%d (scene=200)...\n",
            PW_GRID_DIM, PW_GRID_DIM, worldapi_host, worldapi_port);
@@ -679,6 +722,15 @@ int main(int argc, char **argv) {
             save_world_damage();
             printf("Real shutdown signal received -- saved %d active player(s) + world object damage, exiting.\n", saved_count);
             break;
+        }
+
+        /* Real live mod-manifest reload -- see g_mods_reload_requested's own doc comment above
+           for why this is the one real piece of live state that's safe to reload without a
+           restart. Runs here, between ticks, same as the shutdown check above -- never while a
+           real gameplay call site is mid-call (this server is single-threaded, no reentrancy). */
+        if (g_mods_reload_requested) {
+            g_mods_reload_requested = 0;
+            reload_mods_manifest();
         }
 
         /* Real bug found live (2026-08-28, wiring the real progression fields into

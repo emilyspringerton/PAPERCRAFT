@@ -274,10 +274,12 @@ server on your own machine, connect a real client — every step verified live w
 mod (`xp_award_mod`, a real "destroy a world object, earn real bonus XP" reward, ported from the
 construct's own real per-kill XP value) written specifically to prove the doc, not reusing an
 existing mod. What's still real, later work is everything `MODDING.md`'s own "What's honestly not
-here yet" section names: no dynamic loading (every mod needs a host rebuild), no embedded in-game
-PARENA editor (a modder needs a second repo and its own CLI, not a menu inside PAPERCRAFT
-itself), no live-server reload. The *pipeline* is real; the *embedded, no-rebuild, in-game*
-version of it named above is the real, remaining gap.
+here yet" section names — updated as this gap list keeps closing (`MODDING.md` is the current,
+authoritative version; this paragraph stays as the original 2026-08-28 framing): no embedded
+in-game PARENA editor (a modder needs a second repo and its own CLI, not a menu inside PAPERCRAFT
+itself), and no live-server reload *for world-object edits* specifically (the mods manifest itself
+now reloads live via `SIGHUP`, no restart — `MODDING.md`'s own current detail). The *pipeline* is
+real; the *embedded, no-rebuild, in-game* version of it named above is the real, remaining gap.
 
 ## Real Phase 0 — "a player can log in and spawn in the real persistent city, nothing else"
 

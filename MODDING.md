@@ -309,8 +309,8 @@ asserts, not approximately.
   `mod_registry_lookup`-then-fallback pattern, but doing so for each one is real, separate,
   mechanical follow-up work, not attempted here. Also still real, separate, next work: a manifest
   format richer than `so_path|function-name` (e.g. one that also names WHICH host call site a mod
-  should bind to, instead of the host code naming the function it looks for), and a
-  live/no-restart reload of the manifest itself (see "No live-server reload" below).
+  should bind to, instead of the host code naming the function it looks for). The manifest itself
+  DOES now reload live, no restart — see "No live-server reload" below.
 - **No embedded, in-game PARENA editor.** `NORTHSTAR.md`'s own "The real, longer-arc modding
   vision" section names the actual end state the founder described — a real PARENA editor +
   compiler *embedded inside PAPERCRAFT itself*, so a player mods without ever leaving the game or
@@ -330,9 +330,30 @@ asserts, not approximately.
   instruction instead of a bare `cd: no such file or directory`; a `PARENA_DIR` that exists but
   isn't a real PARENA checkout (no `Makefile`) fails with its own distinct real error rather than
   a confusing `make` failure deeper in.
-- **No live-server reload.** A new/changed mod requires stopping and restarting the server
-  (matching `apps/mapeditor`'s own same real limitation — world-object edits also need a
-  restart to take effect).
+- **No live-server reload — for world-object edits.** `apps/mapeditor`'s own real limitation
+  stands: a changed object position/material/carve-box still needs a real server restart, because
+  every real object is referenced by array INDEX everywhere (`g_wo_mesh[i]`,
+  `g_wo_destroyed_awarded[i]`, a connected player's own current interact target), and a map edit
+  that changes the real object count or ordering would silently desync all of that. Real, separate
+  work, not attempted here.
+
+  What IS now real and verified (2026-08-29), for the one real piece of live server state that
+  doesn't have that index problem: a **real, dynamically-loaded mod manifest DOES reload live**, no
+  restart. A real `SIGHUP` to a running `apps/server` process re-reads `--mods-manifest` from
+  scratch — `dlclose`s every currently-loaded `.so` (not just re-`dlsym`-ing into the same cached
+  handles — `dlopen` on an already-open path returns the SAME mapping, so a modder who rebuilt a
+  `.so` in place would otherwise silently keep running the old code) and calls the exact same
+  `load_mods_manifest` startup path fresh. Safe because `g_mod_registry` is keyed by function
+  NAME, not slot index, and this server is single-threaded with no reentrancy — the reload only
+  ever runs between ticks, never mid-call. Verified live against a real, throwaway server
+  instance: growing the manifest from 1 mod/1 `.so` to 4 mods/3 `.so` files live (`kill -HUP`,
+  editing the manifest file's real content in between) correctly re-registers all four and the
+  server stays up and serving the entire time; shrinking it back down to 1 mod/1 `.so` on a second
+  real `SIGHUP` correctly drops the stale entries, not just adds new ones; and sending `SIGHUP` to
+  a server started with no `--mods-manifest` at all logs a clean, real no-op instead of crashing
+  or doing anything undefined. What this does NOT change: you still can't hand a running server a
+  `--mods-manifest` path it was never given at startup — `SIGHUP` reloads the one real path that
+  was already configured, it doesn't add the flag after the fact.
 
 None of these are secretly hard blockers on the *pipeline* this doc walks through — they're real,
 separate, larger pieces of the founder's own full vision, named honestly rather than glossed over.
