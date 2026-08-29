@@ -337,7 +337,8 @@ is real but cosmetic-only — no real collision with the world/players, no serve
 client simulates its own copy independently), no real weapon/combat system beyond a bare punch
 with distance falloff (`PC_PACKET_INTERACT` still carries no aim/spread/weapon-type data), and
 only a small, editor-placed set of real objects (`apps/mapeditor`,
-`PC_WO_MAX_OBJECTS=4`) — full-city conversion (every real `VoxelBlock` individually destructible)
+`PC_WO_MAX_OBJECTS=8` as of 2026-08-29, doubled from 4 — see below) — full-city conversion
+(every real `VoxelBlock` individually destructible)
 remains separate, future work, still genuinely blocked on real wire-budget accounting, though that
 budget is now measurably less tight than it was: `world_object_state`'s own real per-fragment
 state is bit-packed (2026-08-29, 2 bits/fragment instead of a full byte — see
@@ -355,13 +356,17 @@ seeding) matching its real 15-block L-shape exactly — re-confirmed live agains
 worldapi, not assumed — instead of one oversized bounding box that used to claim 5 blocks' worth
 of empty space at the real, genuinely-missing `(13,1)` column. Verified live: the two carve boxes
 remove exactly 10 + 5 = 15 real blocks from the actual chunk grid at startup, matching the real
-footprint with zero overhang. Wall B stays a real, honest single-box bounding approximation
-(same shape gap, not upgraded this pass) — using two object slots for Wall A now fills
-`PC_WO_MAX_OBJECTS=4` completely (test prop + Wall A1 + Wall A2 + Wall B), a real, explicit
-tradeoff: zero free slots remain for a genuine Wall B split, or anything else, without either
-raising that cap (real, separate wire-budget-accounting work — `PcSnapshotPacket`'s own size is
-unaffected by this change, since the array was always allocated at `PC_WO_MAX_OBJECTS` regardless
-of how many slots were actually in use) or dropping one of the four objects.
+footprint with zero overhang. **Wall B now gets the exact same real treatment too (2026-08-29)** —
+no longer a flat gap at all: `PC_CITY_WALL_B1_*`/`PC_CITY_WALL_B2_*` split its own real,
+re-confirmed-live 15-block L-shape (byte-for-byte the same shape as Wall A's own, just at a
+different chunk-local position) the identical way. This only became possible because
+`PC_WO_MAX_OBJECTS` doubled from 4 to 8 the same day, a real, direct consequence of the
+`world_object_state` bit-packing win above (each object now costs 65 real bytes instead of 137) —
+`sizeof(PcSnapshotPacket)` lands at a real, measured 1380 bytes, still comfortably under the real
+1472-byte budget (92 real bytes of margin, left on purpose). Verified live: the real carve-out now
+removes 10+5 (Wall A) and 10+5 (Wall B) = 30 real blocks total, matching real, live-confirmed
+worldapi data for BOTH walls, not just one. Even with both walls precise, 3 of the real 8 object
+slots stay free for whatever real, editor-placed prop comes next.
 
 The bare-punch hit-detection gap named in an earlier draft of this section is now closed — see
 "Live-wired into the actual game loop" above. Real Phase 1 sequencing for the remaining items

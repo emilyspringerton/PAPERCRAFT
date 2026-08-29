@@ -39,11 +39,20 @@
  * papercraft_worldobjects_test.c (`bazel test //packages/common:papercraft_worldobjects_test`).
  */
 
-#define PC_WO_MAX_OBJECTS 4      /* real, small, bounded cap -- keeps every object's own real
+#define PC_WO_MAX_OBJECTS 8      /* real, small, bounded cap -- keeps every object's own real
                                     fragment-state array inside one real UDP snapshot without
                                     fragmenting the packet (see papercraft_protocol.h's own real
-                                    size accounting); raise later once real per-object relevance/
-                                    streaming exists, not needed for this proof point */
+                                    size accounting). Raised from 4 to 8 (2026-08-29) -- real,
+                                    direct consequence of S206-43's own world_object_state
+                                    bit-packing win (288 real bytes of new headroom), not a
+                                    separate, unrelated decision: each additional real object now
+                                    costs 65 bytes (sizeof(PcWorldObjectDef) + PC_WO_STATE_BYTES +
+                                    1 active byte), down from 137 before that fix, so doubling the
+                                    real cap still lands comfortably under budget (see
+                                    papercraft_protocol.h's own real, measured size accounting for
+                                    the exact before/after numbers) -- not maxed out to the exact
+                                    byte, real margin left on purpose for the next small,
+                                    unrelated real field this struct will eventually need. */
 #define PC_WO_SUBDIV 4            /* matches the original PC_TEST_CUBE_SUBDIV exactly */
 #define PC_WO_FRAGMENTS (6 * PC_WO_SUBDIV * PC_WO_SUBDIV) /* 96, matches PC_TEST_CUBE_FRAGMENTS */
 #define PC_WO_MAGIC 0x50435756u   /* "PCWo" -- version tag, same real "future-format-change bumps

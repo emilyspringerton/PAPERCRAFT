@@ -249,7 +249,8 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   a PARENA reimplementation of a text editor. The original hardcoded single test cube is now
   real, editor-owned data too — `apps/server` auto-seeds one matching the original values the
   very first time it finds no world-objects file, then it's real, persisted, editable data from
-  then on. Up to `PC_WO_MAX_OBJECTS` (4) real objects broadcast at once (a real, bounded cap
+  then on. Up to `PC_WO_MAX_OBJECTS` (8 as of 2026-08-29, doubled from 4 after a real
+  wire-packing win — see below) real objects broadcast at once (a real, bounded cap
   chosen to keep `PcSnapshotPacket` under a real unfragmented-UDP-packet budget — see the
   protocol header's own doc comment). Verified live: placed 3 real objects via the editor
   (CONCRETE/WOOD/METAL, one in the neighbor chunk), confirmed the server loaded and broadcast
@@ -583,8 +584,11 @@ editor, real fragment physics/collision, and full-city `VoxelBlock` conversion (
 individually destructible, still genuinely blocked on real wire-budget accounting, though that
 budget is now measurably roomier — `world_object_state` bit-packing (2026-08-29,
 `packages/common/papercraft_worldobjects.h`'s own `PC_WO_STATE_BYTES`) cut `sizeof(PcSnapshotPacket)`
-from a real, measured 1408 bytes to 1120, a real 288-byte headroom gain, not a decision to raise
-`PC_WO_MAX_OBJECTS` itself) remain real, later work, the same sequencing discipline
+from a real, measured 1408 bytes to 1120, a real 288-byte headroom gain that the same day let
+`PC_WO_MAX_OBJECTS` double from 4 to 8 (landing at a real, measured 1380 bytes, still 92 real
+bytes under budget) — real, bounded, mechanical wins, not full-city conversion itself, which
+remains a real, separate, much larger later decision) remain real, later work, the same
+sequencing discipline
 `WEAKNIGHT_BEDROCK_RACERS` already used (its own Phase 0 shipped a single vehicle on one chunk
 before Phase 1 added a second vehicle or destruction).
 

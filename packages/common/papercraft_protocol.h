@@ -214,28 +214,49 @@ typedef struct {
 #define PC_CITY_WALL_A2_HALF_Y 2.5f
 #define PC_CITY_WALL_A2_HALF_Z 0.5f
 
-/* PC_CITY_WALL_B_*: the real, second wall structure, confirmed live at chunk-local X in {0,1},
-   Z in {0,1}, Y in 65..69 -- world bounding box [0,2) x [65,70) x [0,2) (chunk (0,0)'s own
-   origin is world (0,0)). Same real L-shape as Wall A's own (missing column at (1,1)) but still a
-   real, honest single-box bounding approximation, not upgraded to Wall A1/A2's own precise
-   two-box split this pass -- PC_WO_MAX_OBJECTS=4 is already fully used by the test prop + Wall
-   A1 + Wall A2 + this object, zero free real slots left for a genuine Wall B1/B2 split without
-   dropping one of the other three. Distinct real seed from Wall A1/A2 so all three don't render
-   with identical fragment geometry. */
-#define PC_CITY_WALL_B_BLOCK_X0 0
-#define PC_CITY_WALL_B_BLOCK_X1 1
-#define PC_CITY_WALL_B_BLOCK_Z0 0
-#define PC_CITY_WALL_B_BLOCK_Z1 1
-#define PC_CITY_WALL_B_BLOCK_Y0 65
-#define PC_CITY_WALL_B_BLOCK_Y1 69
-#define PC_CITY_WALL_B_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE */
-#define PC_CITY_WALL_B_SEED        20260830u
-#define PC_CITY_WALL_B_X 1.0f
-#define PC_CITY_WALL_B_Y 67.5f
-#define PC_CITY_WALL_B_Z 1.0f
-#define PC_CITY_WALL_B_HALF_X 1.0f
-#define PC_CITY_WALL_B_HALF_Y 2.5f
-#define PC_CITY_WALL_B_HALF_Z 1.0f
+/* PC_CITY_WALL_B1_* / PC_CITY_WALL_B2_*: Wall B now gets the same real, precise two-box L-shape
+   treatment Wall A1/A2 already proved (2026-08-29) -- real, direct follow-up now that
+   PC_WO_MAX_OBJECTS=8 (S206-43's own bit-packing win) leaves real free slots, closing the "still a
+   real, honest single-box bounding approximation" gap this comment named when Wall A's own split
+   first shipped. Re-confirmed live against the actual worldapi, not assumed from memory: Wall B's
+   real 15 blocks are at chunk-local X in {0,1}, Z in {0,1}, Y in 65..69, columns (0,0)/(0,1)/(1,0)
+   present, (1,1) genuinely NOT present -- byte-for-byte the same real shape as Wall A's own, just
+   at a different chunk-local position. Same real split pattern: B1 covers the two-deep column
+   (0,0)+(0,1), B2 covers the lone column (1,0). */
+#define PC_CITY_WALL_B1_BLOCK_X0 0
+#define PC_CITY_WALL_B1_BLOCK_X1 0
+#define PC_CITY_WALL_B1_BLOCK_Z0 0
+#define PC_CITY_WALL_B1_BLOCK_Z1 1
+#define PC_CITY_WALL_B1_BLOCK_Y0 65
+#define PC_CITY_WALL_B1_BLOCK_Y1 69
+/* Real object placement derived directly from the real block bounds above (world X in [0,1),
+   Z in [0,2), Y in [65,70)). */
+#define PC_CITY_WALL_B1_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE */
+#define PC_CITY_WALL_B1_SEED        20260830u
+#define PC_CITY_WALL_B1_X 0.5f
+#define PC_CITY_WALL_B1_Y 67.5f
+#define PC_CITY_WALL_B1_Z 1.0f
+#define PC_CITY_WALL_B1_HALF_X 0.5f
+#define PC_CITY_WALL_B1_HALF_Y 2.5f
+#define PC_CITY_WALL_B1_HALF_Z 1.0f
+
+#define PC_CITY_WALL_B2_BLOCK_X0 1
+#define PC_CITY_WALL_B2_BLOCK_X1 1
+#define PC_CITY_WALL_B2_BLOCK_Z0 0
+#define PC_CITY_WALL_B2_BLOCK_Z1 0
+#define PC_CITY_WALL_B2_BLOCK_Y0 65
+#define PC_CITY_WALL_B2_BLOCK_Y1 69
+/* Real object placement derived directly from the real block bounds above (world X in [1,2),
+   Z in [0,1), Y in [65,70) -- the real column the old single Wall B bounding box over-claimed
+   into empty air at (1,1) has no object here at all, correctly, same real fix as Wall A2. */
+#define PC_CITY_WALL_B2_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE */
+#define PC_CITY_WALL_B2_SEED        20260832u /* distinct from A1/A2/B1 so none share fragment geometry */
+#define PC_CITY_WALL_B2_X 1.5f
+#define PC_CITY_WALL_B2_Y 67.5f
+#define PC_CITY_WALL_B2_Z 0.5f
+#define PC_CITY_WALL_B2_HALF_X 0.5f
+#define PC_CITY_WALL_B2_HALF_Y 2.5f
+#define PC_CITY_WALL_B2_HALF_Z 0.5f
 
 /* Real, bounded, multi-object broadcast (packages/common/papercraft_worldobjects.h) -- up to
  * PC_WO_MAX_OBJECTS real Paper Engine props, each with its own real editor-placed position/
@@ -248,14 +269,18 @@ typedef struct {
  * comment already named as the target wire format, now spanning a real, editor-authored object
  * list instead of one hardcoded prop. Real, honest size note, re-measured (2026-08-29) after
  * `world_object_state` moved to a real, bit-packed `PC_WO_STATE_BYTES` shape (2 bits/fragment --
- * see `papercraft_worldobjects.h`'s own doc comment for the full real reasoning): `PC_WO_MAX_OBJECTS`=4
- * keeps `sizeof(PcSnapshotPacket)` comfortably under a real 1472-byte (Ethernet MTU minus IP/UDP
- * headers) unfragmented-UDP-packet budget, with real, measured headroom now, not just "fits
- * today" -- fine for this proof point's own real localhost/LAN testing; a real production
- * deployment sensitive to WAN fragmentation is real, later, flagged work, not addressed here
- * (raising `PC_WO_MAX_OBJECTS` or adding per-object relevance/streaming still eat into that same
- * real budget and need real, deliberate accounting when they happen, same as before -- this fix
- * makes that real accounting more favorable, it doesn't remove the need for it).
+ * see `papercraft_worldobjects.h`'s own doc comment for the full real reasoning): each additional
+ * real object now costs 65 real bytes (`sizeof(PcWorldObjectDef)`=40 + `PC_WO_STATE_BYTES`=24 + 1
+ * active byte), down from 137 before that fix -- real, direct headroom that let
+ * `PC_WO_MAX_OBJECTS` double from 4 to 8 the same day, landing `sizeof(PcSnapshotPacket)` at a
+ * real, measured 1380 bytes, still comfortably under (92 real bytes of margin, left on purpose,
+ * not maxed to the exact byte) the real 1472-byte (Ethernet MTU minus IP/UDP headers)
+ * unfragmented-UDP-packet budget -- fine for this proof point's own real localhost/LAN testing; a
+ * real production deployment sensitive to WAN fragmentation is real, later, flagged work, not
+ * addressed here. Raising `PC_WO_MAX_OBJECTS` again, or adding per-object relevance/streaming,
+ * still eats into that same real budget and needs real, deliberate accounting when it happens --
+ * this fix (and the packing one before it) make that real accounting more favorable each time,
+ * they don't remove the need for it.
  * PcWorldObjectDef's own real carve_* fields are packed as `unsigned char`, not `int`,
  * specifically to keep this budget real and honest -- chunk-local block coordinates are always
  * genuinely small (0..15 for X/Z, comfortably under 255 for Y), so the wider type would have been
