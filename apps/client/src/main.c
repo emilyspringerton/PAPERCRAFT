@@ -632,6 +632,18 @@ int main(int argc, char **argv) {
     unsigned int cmd_seq = 0;
     char reject_reason[PC_REJECT_REASON_MAX + 1]; reject_reason[0] = '\0';
 
+    /* Real, minimal connection-loss detection -- closes a real gap this client had no defense
+       against at all: once welcomed, nothing ever re-checked whether real SNAPSHOT traffic was
+       still arriving, so a server crash/restart or a real, indefinitely-dropped UDP path left the
+       player staring at a frozen, silent last-known frame forever. last_snapshot_ms tracks the
+       real wall-clock time of the last real SNAPSHOT actually received (set once welcomed, reset
+       on every real SNAPSHOT after that); PC_CLIENT_STALE_MS is deliberately shorter than
+       apps/server's own real PC_PLAYER_TIMEOUT_MS (30s) so a real reconnect attempt starts, and
+       has a real chance to land, well before the server would ever give up the old slot. */
+#define PC_CLIENT_STALE_MS 5000
+    unsigned int last_snapshot_ms = 0;
+    int reconnecting = 0;
+
     int running = 1;
     unsigned int win_logged = 0;
     unsigned int allocate_seq = 0;
@@ -686,7 +698,12 @@ int main(int argc, char **argv) {
             PcHeader hdr; memcpy(&hdr, buf, sizeof(hdr));
             if (hdr.type == PC_PACKET_WELCOME) {
                 welcomed = 1;
+                reconnecting = 0;
                 my_slot = hdr.client_id;
+                last_snapshot_ms = now_ms(); /* real, deliberate reset -- a fresh WELCOME counts
+                                                 as real activity too, so a real reconnect doesn't
+                                                 immediately look stale again before its own first
+                                                 real SNAPSHOT has had a chance to arrive. */
                 printf("WELCOME received -- slot %d, server-authoritative session live.\n", my_slot);
             } else if (hdr.type == PC_PACKET_REJECT && (size_t)n >= sizeof(PcRejectPacket)) {
                 PcRejectPacket rej; memcpy(&rej, buf, sizeof(rej));
@@ -696,7 +713,23 @@ int main(int argc, char **argv) {
             } else if (hdr.type == PC_PACKET_SNAPSHOT && (size_t)n >= sizeof(PcSnapshotPacket)) {
                 memcpy(&latest_snap, buf, sizeof(latest_snap));
                 have_snapshot = 1;
+                last_snapshot_ms = now_ms();
             }
+        }
+
+        /* Real connection-loss detection -- once welcomed, if PC_CLIENT_STALE_MS passes with no
+           real SNAPSHOT at all, treat the connection as lost: drop back to !welcomed so the
+           existing real connect-retry loop above (500ms cadence) starts firing again, and the
+           real reconnect-by-player_id logic already in apps/server's own CONNECT handler
+           reclaims the same slot the moment a real CONNECT lands, as long as it's still within
+           the server's own real PC_PLAYER_TIMEOUT_MS window. */
+        if (welcomed && now - last_snapshot_ms > PC_CLIENT_STALE_MS) {
+            welcomed = 0;
+            reconnecting = 1;
+            last_connect_retry_ms = now - 500; /* real, immediate retry -- don't wait a further
+                                                    500ms on top of the real staleness window
+                                                    that already just elapsed. */
+            fprintf(stderr, "Real SNAPSHOT stream stopped for %ums -- reconnecting.\n", PC_CLIENT_STALE_MS);
         }
 
         float move_x = 0.0f, move_z = 0.0f;
@@ -739,6 +772,29 @@ int main(int argc, char **argv) {
             glColor3f(1.0f, 0.4f, 0.4f);
             pc_draw_string("CONNECT REJECTED", win_w / 2.0f - 120.0f, win_h / 2.0f + 30.0f, 12);
             pc_draw_string(reject_reason, win_w / 2.0f - 220.0f, win_h / 2.0f - 20.0f, 8);
+            SDL_GL_SwapWindow(win);
+            SDL_Delay(16);
+            continue;
+        }
+
+        /* Real "connection lost, reconnecting" screen -- same real full-screen 2D takeover
+           pattern the CONNECT REJECTED screen above already established, not a new one. Shown
+           instead of the normal 3D scene (which would otherwise just keep rendering the last,
+           now-stale real snapshot frozen in place, giving no real indication anything is wrong)
+           until a fresh real WELCOME lands. */
+        if (reconnecting) {
+            glViewport(0, 0, win_w, win_h);
+            glDisable(GL_DEPTH_TEST);
+            glClearColor(0.06f, 0.06f, 0.09f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            glOrtho(0, win_w, 0, win_h, -1, 1);
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+            glColor3f(0.9f, 0.8f, 0.3f);
+            pc_draw_string("CONNECTION LOST", win_w / 2.0f - 115.0f, win_h / 2.0f + 30.0f, 12);
+            pc_draw_string("RECONNECTING...", win_w / 2.0f - 105.0f, win_h / 2.0f - 20.0f, 9);
             SDL_GL_SwapWindow(win);
             SDL_Delay(16);
             continue;

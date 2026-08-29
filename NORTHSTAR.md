@@ -452,6 +452,28 @@ tick upward in real time exactly as it should for a still-live player. `bazel bu
 test //...` both clean (added `papercraft_persist.h` to `packages/common:common_headers`, no new
 targets).
 
+**Real abandoned-connection handling is also now shipped (2026-08-29)**, closing a real gap the
+persistence work above didn't cover: a crashed/closed client leaves no real disconnect packet
+(UDP has none), so a claimed slot stayed `active` forever with no timeout at all — on this
+always-running, never-ending persistent server (`"papercraft shouldnt have matches and the
+matches shouldnt end"`), that's a real, slow slot leak toward `PC_MAX_PLAYERS`(16), not a
+cosmetic issue. `apps/server` now frees a slot (real final autosave first, same real
+`save_player` call the graceful-shutdown path already uses) after `PC_PLAYER_TIMEOUT_MS` (30s) of
+real silence from that client. `apps/client` gets the matching real half: `PC_CLIENT_STALE_MS`
+(5s, deliberately shorter than the server's own 30s so a genuine reconnect wins the race) of no
+real `SNAPSHOT` traffic drops it back into the existing real connect-retry loop and shows a real
+`"CONNECTION LOST -- RECONNECTING..."` screen (same real full-screen 2D takeover pattern the
+`CONNECT REJECTED` screen already established) instead of freezing on the last stale frame
+forever. Verified live, real-time, not simulated: a real UDP probe connected, then went silent for
+a real 31 seconds against a real throwaway server — the real log line
+(`"Player slot 0 timed out (no real packet in 30000ms) -- saving and freeing the slot."`) fired
+exactly once, the server stayed up throughout, and a second real probe using the same player_id
+immediately reclaimed the freed slot with its own real, correctly-restored progression (the
+passive XP tick had kept accruing for the real 31 connected seconds, confirmed via the restored
+level). The client-side half was verified by clean compilation and careful tracing against this
+same, already-proven reconnect-by-`player_id` mechanism, not a live graphical Xvfb session this
+pass — a real, honest scope note, not an oversight.
+
 **Real jump physics + the first real "trick" input are wired in too now (2026-08-28, same day).**
 Closed the last small item down "Explicitly not Phase 0" before the much bigger map-editor/PARENA-
 editor scope: trick/skate input, the founder's own "plus SKATE2" pitch had zero real movement-

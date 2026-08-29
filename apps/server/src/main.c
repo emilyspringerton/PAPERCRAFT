@@ -48,6 +48,21 @@
 #define PC_TICK_DT (1.0f / (float)PC_TICK_HZ)
 #define PC_MOVE_SPEED 4.0f /* world units/sec, real walking pace */
 #define PC_USERCMD_STALE_MS 500
+#define PC_PLAYER_TIMEOUT_MS 30000 /* real, generous "genuinely abandoned" threshold -- 60x
+                                       PC_USERCMD_STALE_MS's own much shorter "stopped moving"
+                                       grace period, and comfortably longer than apps/client's own
+                                       real PC_CLIENT_STALE_MS reconnect-detection window (5s), so
+                                       a legitimate real reconnect attempt (a brief network blip,
+                                       not a genuinely closed client) always wins the race and
+                                       reclaims the same slot via the existing real
+                                       reconnect-by-player_id lookup, rather than losing it to this
+                                       timeout first. Closes a real gap this always-running,
+                                       never-ending persistent server (NORTHSTAR.md's own
+                                       "papercraft shouldnt have matches and the matches shouldnt
+                                       end") had no defense against at all: a slot claimed by a
+                                       crashed/closed client with no clean disconnect packet
+                                       (UDP has none) stayed active()==1 forever, permanently
+                                       eating one of PC_MAX_PLAYERS(16) real slots. */
 #define PC_INTERACT_REACH 2.5f  /* world units in front of the player an interact request can reach */
 #define PC_INTERACT_RADIUS 1.0f /* real hit radius, matches paper_mesh_test.c's own real "shotgun blast" scenario */
 #define PC_INTERACT_DAMAGE 30   /* real damage per hit -- CONCRETE fragments (80 max HP, 50% resist) take ~3 real hits to break */
@@ -826,6 +841,12 @@ int main(int argc, char **argv) {
                 memcpy(s->player_id, player_id, 16);
                 s->addr = from;
                 s->addr_len = from_len;
+                /* Real, deliberate reset -- a CONNECT (fresh claim or a real reconnect) counts as
+                   real activity for PC_PLAYER_TIMEOUT_MS's own purposes, same as any other real
+                   client-to-server packet. Without this, a freshly-claimed slot with no USERCMD
+                   sent yet would read last_usercmd_ms as its own zero-initialized default and
+                   look already-timed-out on the very next tick. */
+                s->last_usercmd_ms = now_ms();
 
                 PcWelcomePacket w;
                 memset(&w, 0, sizeof(w));
@@ -985,6 +1006,23 @@ int main(int argc, char **argv) {
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 PlayerSlot *s = &g_slots[i];
                 if (!s->active) continue;
+
+                /* Real, genuine-abandonment timeout -- closes the real gap this always-running
+                   persistent server had no defense against: a crashed/closed client leaves no
+                   real disconnect packet (UDP has none), so without this the slot stayed
+                   active()==1 forever. Real, final autosave before freeing the slot -- same real
+                   save_player call the graceful-shutdown path already uses, so a real timed-out
+                   player's own progress isn't lost, just like any other real save. A real
+                   reconnect within PC_PLAYER_TIMEOUT_MS still works exactly as before (the
+                   existing reconnect-by-player_id CONNECT-handler lookup), this only fires once
+                   that real window has genuinely closed. */
+                if (now - s->last_usercmd_ms > PC_PLAYER_TIMEOUT_MS) {
+                    printf("Player slot %d timed out (no real packet in %ums) -- saving and freeing the slot.\n",
+                           i, PC_PLAYER_TIMEOUT_MS);
+                    save_player(s);
+                    s->active = 0;
+                    continue;
+                }
 
                 if (now - s->last_usercmd_ms > PC_USERCMD_STALE_MS) {
                     s->latest_move_x = 0.0f;
