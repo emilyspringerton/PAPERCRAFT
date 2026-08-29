@@ -277,12 +277,27 @@ asserts, not approximately.
   still registers the 2 good mods, and the server stays up and serving the entire time — confirmed
   by checking the process was still alive after startup, not just that it didn't immediately
   crash; and running with no `--mods-manifest` flag at all produces byte-for-byte the same real
-  startup log as before this change, confirming the real default-off behavior. What this does NOT
-  yet do: nothing in `g_mod_registry` is *called* from any real gameplay code path yet — an actual
-  call site in `apps/server` that uses a dynamically-loaded function instead of a
-  statically-linked one remains the one real, separate, next step toward closing this gap for
-  real, not attempted here (a bigger design question in its own right: what should gameplay do if
-  the mod that normally handles an event was never successfully loaded).
+  startup log as before this change, confirming the real default-off behavior.
+
+  Also now real and verified (2026-08-29): a real, live, end-to-end gameplay proof, not just
+  registration. The `on_papercraft_xp_for_object_destroyed` call site (the "destroyed a world
+  object" event, this repo's own first worked mod-authoring example above) now looks the function
+  up in `g_mod_registry` by name and calls it if a real mod registered under that exact name,
+  falling back to the exact same statically-linked call otherwise — the real, designed answer to
+  "what should gameplay do if the mod never loaded." Verified live with a real UDP probe against
+  two real throwaway server instances: with no `--mods-manifest`, destroying the real default test
+  prop logs `+60 real xp_award_mod XP (statically-linked)`; with a real one-line manifest
+  registering `libxp_award_mod.so`, the identical real scenario logs
+  `+60 real xp_award_mod XP (dynamically-loaded)` — same real reward, same real generated C,
+  different real code path, both confirmed via the live snapshot's own fragment state (`96/96`
+  real fragments gone) and the player's own real `xp` field. What's left, honestly: only this one
+  real call site is wired this way — `on_papercraft_level_for_xp`, `on_papercraft_can_allocate_talent`,
+  and this repo's other statically-linked mod calls could follow the exact same real, now-proven
+  `mod_registry_lookup`-then-fallback pattern, but doing so for each one is real, separate,
+  mechanical follow-up work, not attempted here. Also still real, separate, next work: a manifest
+  format richer than `so_path|function-name` (e.g. one that also names WHICH host call site a mod
+  should bind to, instead of the host code naming the function it looks for), and a
+  live/no-restart reload of the manifest itself (see "No live-server reload" below).
 - **No embedded, in-game PARENA editor.** `NORTHSTAR.md`'s own "The real, longer-arc modding
   vision" section names the actual end state the founder described — a real PARENA editor +
   compiler *embedded inside PAPERCRAFT itself*, so a player mods without ever leaving the game or

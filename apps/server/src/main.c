@@ -122,6 +122,11 @@ int on_papercraft_move_speed_boost_permille(int move_rank);
 int on_papercraft_slide_jump_boost_permille(int speed_milli);
 int on_papercraft_xp_for_object_destroyed(void);
 
+/* I32Fn0 -- real function-pointer shape for a dynamically-loaded, zero-arg I32-returning mod
+   function, same real shape apps/dynmod_poc's own I32Fn0 already proved dlopen/dlsym-compatible.
+   Used by the real call site below to invoke a mod resolved out of g_mod_registry. */
+typedef int (*I32Fn0)(void);
+
 #define PC_XP_TICK_MS   1000 /* real 1-second cadence, matches SHANKPIT_CONSTRUCT.txt's own progression_tick */
 #define PC_XP_PER_TICK  5    /* matches the construct's own real progression_add_xp(5) passive rate */
 #define PC_AUTOSAVE_MS  10000 /* real periodic per-player save cadence -- 10s, real, bounded worst-case
@@ -182,9 +187,15 @@ static void save_world_damage(void) {
 
 /* Real, minimal dynamic mod registry -- apps/server's own real, production-side proof that the
    apps/dynmod_poc mechanism (dlopen/dlsym against an unmodified real PARENA-compiled .so) can be
-   wired into the real game server, not just a standalone tool (MODDING.md's own "an actual
-   apps/server call site" gap remains real, separate, next work -- nothing here is CALLED from any
-   gameplay code path yet, this is registration only). Loaded once at startup, only if
+   wired into the real game server, not just a standalone tool. Real call-site policy, decided
+   here for the first time (closes MODDING.md's own "an actual apps/server call site" gap): a real
+   call site looks a mod function up in this registry by name and calls it IF a real mod
+   dynamically registered under that exact name; otherwise it falls back to the same real,
+   statically-linked function this repo has always called -- so a mod that never loaded (the
+   common case whenever --mods-manifest is unset, or that one specific mod failed) degrades to
+   today's exact, unchanged behavior, never to broken/missing gameplay. See
+   on_papercraft_xp_for_object_destroyed's own real call site for the first one wired this way.
+   Loaded once at startup, only if
    --mods-manifest names a real file. Real, deliberately different manifest format from
    apps/dynmod_poc's own test-oriented one: just `so_path|function-name` per line (blank/#-prefixed
    lines skipped) -- a real running server has no "expected value" to self-check against the way a
@@ -207,6 +218,19 @@ typedef struct {
 } PcModRegistryEntry;
 static PcModRegistryEntry g_mod_registry[PC_MOD_REGISTRY_MAX];
 static int g_mod_registry_count = 0;
+
+/* mod_registry_lookup: real, linear lookup by function name (PC_MOD_REGISTRY_MAX is small --
+   16 -- a linear scan is the real, appropriately-simple choice, not a premature hash table).
+   Returns NULL if no mod named this function loaded successfully (the common case when
+   --mods-manifest wasn't given at all, or that specific mod failed to load) -- every real call
+   site using this is required to have a real, statically-linked fallback for exactly that case,
+   see on_papercraft_xp_for_object_destroyed's own real call site below for the first one. */
+static void *mod_registry_lookup(const char *name) {
+    for (int i = 0; i < g_mod_registry_count; i++) {
+        if (strcmp(g_mod_registry[i].name, name) == 0) return g_mod_registry[i].fn;
+    }
+    return NULL;
+}
 
 /* Real handle cache, same dlopen-once-per-distinct-path pattern apps/dynmod_poc's own manifest
    mode already proved (S206-27) -- two manifest lines naming the same .so share one real loaded
@@ -834,7 +858,17 @@ int main(int argc, char **argv) {
                            PAPER_STATE_GONE) and applies it once per object via the real latch
                            above, matching every other "mod decides, host applies" split in this
                            monorepo. This is PAPERCRAFT's own first real worked mod-authoring
-                           example -- see MODDING.md. */
+                           example -- see MODDING.md.
+
+                           This is also this repo's own first real apps/server call site that
+                           prefers a dynamically-loaded mod over the statically-linked one -- real
+                           call-site policy documented on g_mod_registry's own header comment: look
+                           the function up by name, call it if a real mod registered under that
+                           exact name (--mods-manifest was given and this specific mod loaded),
+                           otherwise fall back to the exact same statically-linked call this repo
+                           has always made. Either path awards the real, correct reward -- the
+                           dynamically-loaded .so is built from the EXACT same generated C as the
+                           statically-linked function, not a different implementation. */
                         if (!g_wo_destroyed_awarded[target]) {
                             int gone_count = 0;
                             for (int f = 0; f < g_wo_mesh[target].fragment_count; f++) {
@@ -842,9 +876,20 @@ int main(int argc, char **argv) {
                             }
                             if (gone_count == g_wo_mesh[target].fragment_count) {
                                 g_wo_destroyed_awarded[target] = 1;
-                                int reward = on_papercraft_xp_for_object_destroyed();
+                                void *dyn = mod_registry_lookup("on_papercraft_xp_for_object_destroyed");
+                                int reward;
+                                const char *source;
+                                if (dyn) {
+                                    I32Fn0 fn = (I32Fn0)dyn;
+                                    reward = fn();
+                                    source = "dynamically-loaded";
+                                } else {
+                                    reward = on_papercraft_xp_for_object_destroyed();
+                                    source = "statically-linked";
+                                }
                                 award_xp(s, reward, i);
-                                printf("Player slot %d destroyed world object %d -- +%d real xp_award_mod XP.\n", i, target, reward);
+                                printf("Player slot %d destroyed world object %d -- +%d real xp_award_mod XP (%s).\n",
+                                       i, target, reward, source);
                             }
                         }
                     }

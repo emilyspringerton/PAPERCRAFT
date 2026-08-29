@@ -509,10 +509,16 @@ itself, not just the standalone `apps/dynmod_poc` tool: a real, optional
 `--mods-manifest <path>` flag (default off, zero behavior change unless given) loads a real
 manifest at startup into a small in-memory registry, with a real, designed error-handling policy
 (a bad mod logs a `WARNING` and is skipped, never fatal to the server) verified live against a
-real throwaway server instance — see `MODDING.md`'s own updated "No dynamic loading" entry for
-the full real detail, including the one real, separate piece still not done (nothing in that
-registry is called from a real gameplay code path yet) — are now real and shipped (see the
-sections above) — the
+real throwaway server instance — and proven live, end to end, on real gameplay, not just
+registration: the "destroyed a world object" call site now prefers a real dynamically-loaded mod
+over the statically-linked one whenever `--mods-manifest` registers it, falling back cleanly
+otherwise, verified via a real UDP probe against two real throwaway server instances producing the
+identical real `+60 XP` reward through both real code paths, each correctly logged
+(`statically-linked` vs `dynamically-loaded`) — see `MODDING.md`'s own updated "No dynamic
+loading" entry for the full real detail, including the one real, honest piece still open (only
+this one call site is wired this way; the rest of this repo's statically-linked mod calls could
+follow the same now-proven pattern, real, separate, mechanical work, not attempted here) — are now
+real and shipped (see the
 full embedded, in-game PARENA editor/modding toolchain (a real, no-rebuild-needed, in-game
 version of the modding pipeline built on top of that now-proven mechanism; `MODDING.md`'s own
 "What's honestly not here yet" has the full real gap list), a real graphical/live-server map
