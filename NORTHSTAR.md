@@ -217,9 +217,24 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   not already at its own real cap of 5) is now a real PARENA mod
   (`PARENA/stdlib/papercraft/talent_mod.prn` → `packages/simulation/talent_mod.c`,
   `on-papercraft-can-allocate-talent`, verified via `talent_mod_test.c`,
-  `bazel test //...` green). Still not built: the actual five stat effects
-  (`progression_apply_bonuses`'s own real per-stat gameplay hooks), a real UI, and how this ties
-  into the real host game loop this repo still doesn't have.
+  `bazel test //...` green). **Now real and wired into the real host game loop** (this bullet's
+  own "this repo still doesn't have [one]" line is stale — `apps/server` is real and live since
+  2026-08-28): `PC_PACKET_ALLOCATE_TALENT` applies the real gate's decision, and the real MOVE
+  stat effect (`packages/simulation/stat_effects_mod.c`'s own
+  `on-papercraft-move-speed-boost-permille`, ported from `progression_apply_bonuses`'s own real
+  `"boost = 1.0 + 0.035 * move"`) is live in the real per-tick movement-speed calculation. Still
+  not built: the other four real per-stat gameplay hooks (vitality/handling/shield/storm) — MOVE
+  only for now because it's the one stat with a real, already-existing system to affect
+  (movement); the other four's own real systems (player HP for vitality, attack cooldowns for
+  handling, a shield mechanic, a storm/ability-cooldown mechanic) don't exist in this repo yet, so
+  porting their own real per-stat formulas would have nothing real to attach to — same real
+  "smallest real proof point" boundary as everywhere else, not an oversight (see
+  `stat_effects_mod.c`'s own header comment). **A real UI is also now shipped**, not still
+  missing: `apps/client`'s own `draw_progression_hud` renders a real
+  `"LVL %d  XP %d/%d  PTS %d"` readout every frame (`packages/common/hud_text.h`'s own stroke
+  font, the same real renderer the login screen already uses), plus a real
+  `"[1]MOVE %d [2]VIT %d [3]HANDLE %d [4]SHIELD %d [5]STORM %d"` ability-rank line whenever the
+  player has a real unspent point to show it for.
 - **A real map editor, built in from day 0, PARENA-powered — first real pass shipped
   (2026-08-28).** Founder: "build the map editor in from day 0" / "parena powered." New
   `apps/mapeditor` — a real, minimal, offline CLI tool (`mapeditor add/list/remove/edit`) that places
