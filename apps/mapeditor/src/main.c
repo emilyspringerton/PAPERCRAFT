@@ -74,7 +74,9 @@ static void print_usage(void) {
         "  --half-extent sets all three real per-axis half-extents at once (a uniform cube);\n"
         "  --half-x/--half-y/--half-z override individually after that, so e.g.\n"
         "  '--half-extent 1.5 --half-z 0.15' places a real wide/tall, thin wall-shaped slab --\n"
-        "  a non-cube base shape, not a scaled cube. add ground-snaps the real placement Y via a\n"
+        "  a non-cube base shape, not a scaled cube. Every real half-extent value must be > 0\n"
+        "  (rejected otherwise -- a zero/negative real extent produces a degenerate, invisible\n"
+        "  object, not a crash, but never anything useful). add ground-snaps the real placement Y via a\n"
         "  live worldapi ground-height lookup at (x,z) -- refuses (fails closed) if worldapi is\n"
         "  unreachable or that column has no real solid block, same discipline apps/server's own\n"
         "  spawn logic already uses -- UNLESS --carve is given, in which case Y is derived from\n"
@@ -93,6 +95,21 @@ static int parse_material(const char *s) {
     if (strcmp(s, "concrete") == 0) return PAPER_MATERIAL_CONCRETE;
     if (strcmp(s, "metal") == 0) return PAPER_MATERIAL_METAL;
     return -1;
+}
+
+/* parse_positive_half: real validation for a --half-extent/--half-x/--half-y/--half-z value --
+   closes a real, previously-unvalidated gap (a zero or negative half-extent was silently
+   accepted, producing a degenerate, invisible, zero-volume real object -- not a crash, since
+   packages/common/paper_mesh.h's own paper_face_grid already guards its own real division against
+   a zero axis length, but a real, confusing footgun for a modder who mistyped a value or dropped
+   a minus sign). Returns 1 and writes *out on a real, valid (> 0) value; returns 0 and leaves
+   *out untouched otherwise, so the caller can print a real, specific error naming which flag and
+   value were rejected. */
+static int parse_positive_half(const char *s, float *out) {
+    float v = (float)atof(s);
+    if (v <= 0.0f) return 0;
+    *out = v;
+    return 1;
 }
 
 static int cmd_list(const char *path) {
@@ -410,15 +427,19 @@ int main(int argc, char **argv) {
             } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
                 seed = (unsigned int)strtoul(argv[++i], NULL, 10); seed_given = 1;
             } else if (strcmp(argv[i], "--half-extent") == 0 && i + 1 < argc) {
-                float v = (float)atof(argv[++i]);
+                float v;
+                if (!parse_positive_half(argv[++i], &v)) { fprintf(stderr, "Real half-extent must be > 0, got '%s'.\n", argv[i]); return 1; }
                 half_x = v; half_y = v; half_z = v;
                 half_x_given = 1; half_y_given = 1; half_z_given = 1;
             } else if (strcmp(argv[i], "--half-x") == 0 && i + 1 < argc) {
-                half_x = (float)atof(argv[++i]); half_x_given = 1;
+                if (!parse_positive_half(argv[++i], &half_x)) { fprintf(stderr, "Real half-x must be > 0, got '%s'.\n", argv[i]); return 1; }
+                half_x_given = 1;
             } else if (strcmp(argv[i], "--half-y") == 0 && i + 1 < argc) {
-                half_y = (float)atof(argv[++i]); half_y_given = 1;
+                if (!parse_positive_half(argv[++i], &half_y)) { fprintf(stderr, "Real half-y must be > 0, got '%s'.\n", argv[i]); return 1; }
+                half_y_given = 1;
             } else if (strcmp(argv[i], "--half-z") == 0 && i + 1 < argc) {
-                half_z = (float)atof(argv[++i]); half_z_given = 1;
+                if (!parse_positive_half(argv[++i], &half_z)) { fprintf(stderr, "Real half-z must be > 0, got '%s'.\n", argv[i]); return 1; }
+                half_z_given = 1;
             } else if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
                 snprintf(path, sizeof(path), "%s", argv[++i]);
             }
@@ -453,14 +474,15 @@ int main(int argc, char **argv) {
                    --half-x/--half-y/--half-z below can still override individually if given
                    AFTER this on the command line, letting a modder start from a cube and flatten
                    just one axis into a real wall-shaped slab. */
-                float v = (float)atof(argv[++i]);
+                float v;
+                if (!parse_positive_half(argv[++i], &v)) { fprintf(stderr, "Real half-extent must be > 0, got '%s'.\n", argv[i]); return 1; }
                 half_x = v; half_y = v; half_z = v;
             } else if (strcmp(argv[i], "--half-x") == 0 && i + 1 < argc) {
-                half_x = (float)atof(argv[++i]);
+                if (!parse_positive_half(argv[++i], &half_x)) { fprintf(stderr, "Real half-x must be > 0, got '%s'.\n", argv[i]); return 1; }
             } else if (strcmp(argv[i], "--half-y") == 0 && i + 1 < argc) {
-                half_y = (float)atof(argv[++i]);
+                if (!parse_positive_half(argv[++i], &half_y)) { fprintf(stderr, "Real half-y must be > 0, got '%s'.\n", argv[i]); return 1; }
             } else if (strcmp(argv[i], "--half-z") == 0 && i + 1 < argc) {
-                half_z = (float)atof(argv[++i]);
+                if (!parse_positive_half(argv[++i], &half_z)) { fprintf(stderr, "Real half-z must be > 0, got '%s'.\n", argv[i]); return 1; }
             } else if (strcmp(argv[i], "--carve") == 0) {
                 has_carve = 1;
             } else if (strcmp(argv[i], "--carve-x0") == 0 && i + 1 < argc) {
