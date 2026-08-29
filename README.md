@@ -127,6 +127,15 @@ was attempted (Homebrew SDL2, `-framework OpenGL`) but dropped — five straight
 never got past the client compile step, this environment has no macOS host to debug it against
 locally, and founder call was it's not worth burning more cycles on an unverifiable target. See
 `NORTHSTAR.md`'s own cross-platform CI section for the full story if this ever gets revisited.
+Each release zip also carries a `PLAY_ONLINE.bat`/`.sh` alongside the plain `PLAY.bat`/`.sh` —
+pre-filled with the real public server's host flags, no CLI typing needed.
+
+**`apps/client` writes `papercraft_client.log`** next to itself on every real launch (overwritten
+each run, not appended) — everything the client would otherwise only print to a console, captured
+to a real file instead. Matters most on Windows: `PLAY.bat`/`PLAY_ONLINE.bat` launch the exe via
+`start`, which opens its own console window that closes itself the instant the process exits, so
+a fast failure (the real, mandatory worldapi-fetch-on-launch check failing before the SDL window
+even opens, for instance) is otherwise just a flash with nothing left to read afterward.
 
 Controls: WASD to move, Space to jump (hold Ctrl/Shift + tap Space for a real slide-jump boost),
 E to punch whatever's in reach, 1–5 to spend a talent point once you have one.

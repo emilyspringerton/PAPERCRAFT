@@ -576,7 +576,30 @@ static void draw_player_marker(float x, float y, float z, float yaw, int is_own)
 }
 
 int main(int argc, char **argv) {
+    /* Real, file-based logging (2026-08-29, founder real-time: "im on windows and i dont have
+       eaasy access to command line can you add some logging into the client directory?") --
+       PLAY_ONLINE.bat/PLAY.bat launch this exe via `start`, which opens a real, separate console
+       window that closes itself the instant the process exits -- on a fast failure (e.g. the
+       real, mandatory worldapi fetch below failing before the SDL window ever opens, printing a
+       FATAL message and returning immediately) that's a real console flash with no way to ever
+       read what it said. Redirecting stdout AND stderr to a real papercraft_client.log file next
+       to the exe (relative path -- resolves to whatever directory a Windows double-click's own
+       "current directory" is, the same directory the exe itself lives in) captures every real
+       printf/fprintf this file already makes, including that exact FATAL line, with zero changes
+       needed at any other call site. Overwrites on every real launch (not appended) -- the founder
+       wants to see what THIS run did, not an ever-growing history. Best-effort: if this real
+       redirect fails (e.g. no write permission in the exe's own directory), both streams silently
+       fall back to whatever they already were -- never a hard crash over a log file. */
+    /* Return values deliberately ignored (see the real, best-effort fallback note above) -- glibc
+       marks freopen warn_unused_result, so the result is captured into a real, named variable and
+       explicitly cast to void, a real, standard way to silence that warning without disabling it
+       repo-wide. */
+    FILE *log_stdout = freopen("papercraft_client.log", "w", stdout);
+    FILE *log_stderr = freopen("papercraft_client.log", "a", stderr);
+    (void)log_stdout;
+    (void)log_stderr;
     setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
     const char *worldapi_host = "localhost";
     int worldapi_port = 7070;
     const char *server_host = "localhost";
