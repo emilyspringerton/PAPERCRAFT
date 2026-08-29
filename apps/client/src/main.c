@@ -846,6 +846,19 @@ int main(int argc, char **argv) {
            fragment state, now applied to whole-object presence too). */
         for (int o = 0; o < PC_WO_MAX_OBJECTS; o++) {
             if (!latest_snap.world_object_active[o]) continue;
+
+            /* Real, unpacked scratch copy of this object's own real fragment state -- the wire
+               shape (latest_snap.world_object_state[o]) is bit-packed now (2026-08-29, real wire-
+               budget win, see papercraft_worldobjects.h's own doc comment), but every real
+               client-side consumer below (the debris-diff logic, draw_test_cube) still wants one
+               real, plain byte per fragment -- unpacking once per object per frame here keeps
+               that code completely unchanged, isolating the wire-format change to just this one
+               real unpack step. */
+            unsigned char cur_state[PC_WO_FRAGMENTS];
+            for (int f = 0; f < PC_WO_FRAGMENTS; f++) {
+                cur_state[f] = (unsigned char)pc_wo_state_unpack(latest_snap.world_object_state[o], f);
+            }
+
             if (!g_wo_mesh_ready[o]) {
                 const PcWorldObjectDef *def = &latest_snap.world_objects[o];
                 paper_generate_box(&g_wo_mesh[o], def->half_x, def->half_y, def->half_z, PC_WO_SUBDIV, def->material, def->seed);
@@ -854,7 +867,7 @@ int main(int argc, char **argv) {
                    pre-fill so its own already-broken fragments (e.g. restored from a real
                    PcWorldDamageFile on the server side) don't all spawn debris the instant this
                    client first sees them. */
-                memcpy(g_prev_wo_state[o], latest_snap.world_object_state[o], PC_WO_FRAGMENTS);
+                memcpy(g_prev_wo_state[o], cur_state, PC_WO_FRAGMENTS);
             }
             /* Real GONE-transition detection -- diff this real snapshot's fragment state against
                the last one this client saw, and spawn a real debris piece for every fragment
@@ -863,7 +876,7 @@ int main(int argc, char **argv) {
             if (g_prev_wo_state_valid) {
                 for (int f = 0; f < g_wo_mesh[o].fragment_count && f < PC_WO_FRAGMENTS; f++) {
                     if (g_prev_wo_state[o][f] != PAPER_STATE_GONE &&
-                        latest_snap.world_object_state[o][f] == PAPER_STATE_GONE) {
+                        cur_state[f] == PAPER_STATE_GONE) {
                         spawn_debris_for_fragment(g_debris, &g_debris_cursor, &g_wo_mesh[o], f,
                                                    latest_snap.world_objects[o].x,
                                                    latest_snap.world_objects[o].y,
@@ -871,9 +884,9 @@ int main(int argc, char **argv) {
                     }
                 }
             }
-            memcpy(g_prev_wo_state[o], latest_snap.world_object_state[o], PC_WO_FRAGMENTS);
+            memcpy(g_prev_wo_state[o], cur_state, PC_WO_FRAGMENTS);
 
-            draw_test_cube(&g_wo_mesh[o], latest_snap.world_object_state[o],
+            draw_test_cube(&g_wo_mesh[o], cur_state,
                             latest_snap.world_objects[o].x, latest_snap.world_objects[o].y, latest_snap.world_objects[o].z);
         }
         g_prev_wo_state_valid = 1;

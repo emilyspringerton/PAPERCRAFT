@@ -1165,7 +1165,7 @@ int main(int argc, char **argv) {
                 if (o < g_wo_file.count) {
                     snap.world_objects[o] = g_wo_file.objects[o];
                     for (int f = 0; f < g_wo_mesh[o].fragment_count && f < PC_WO_FRAGMENTS; f++) {
-                        snap.world_object_state[o][f] = (unsigned char)g_wo_mesh[o].fragments[f].state;
+                        pc_wo_state_pack(snap.world_object_state[o], f, g_wo_mesh[o].fragments[f].state);
                     }
                 }
             }

@@ -50,6 +50,45 @@
                                      this" convention packages/common/papercraft_persist.h's own
                                      PC_SAVE_MAGIC already established */
 
+/* PC_WO_STATE_BYTES / pc_wo_state_pack / pc_wo_state_unpack (2026-08-29) -- real, bounded first
+ * step toward docs/NORTHSTAR_PAPER_ENGINE.md's own honestly-flagged "full-city conversion... the
+ * real wire budget genuinely can't support this at this scale" limit, confirmed by actually
+ * measuring sizeof(PcSnapshotPacket) (1408 bytes) against the real 1472-byte unfragmented-UDP
+ * budget: only 64 real bytes of headroom, and each additional real object costs 137 bytes
+ * (sizeof(PcWorldObjectDef) + PC_WO_FRAGMENTS + 1 active byte) -- not even room for ONE more
+ * object before this fix.
+ *
+ * Real, PAPER_STATE_* (paper_mesh.h) is only ever 0-3 -- a real, PLAIN byte per fragment
+ * (`unsigned char world_object_state[PC_WO_MAX_OBJECTS][PC_WO_FRAGMENTS]`, the original real wire
+ * shape) spends 8 real bits to carry 2 real bits of information, 6 of them always zero. Packed 4
+ * fragments per byte (2 bits each, PC_WO_STATE_BYTES = PC_WO_FRAGMENTS/4 = 24) cuts the real
+ * per-object state cost from 96 bytes to 24 -- 288 real bytes saved across all
+ * PC_WO_MAX_OBJECTS(4) objects, real, measured, not estimated (see the actual sizeof comparison
+ * in this repo's own real verification for this change). This is a real, narrow, mechanical wire
+ * optimization only -- it does NOT by itself raise PC_WO_MAX_OBJECTS or attempt full-city
+ * conversion (a real, separate, later decision, now genuinely better-informed: there's real,
+ * measured headroom for more objects that didn't exist before, not just more headroom in the
+ * abstract).
+ *
+ * Deliberately NOT used by PcWorldDamageFile (packages/common/papercraft_worldobjects.h's own
+ * struct further down, an on-disk gameplay-state format, not a real per-snapshot wire cost) --
+ * that struct keeps its own plain `int hp[][]` real per-fragment values (actual HP, not just a
+ * 2-bit state tier), a real, different, richer real format with no real wire-budget pressure on
+ * it at all. */
+#define PC_WO_STATE_BYTES ((PC_WO_FRAGMENTS + 3) / 4)
+
+static inline void pc_wo_state_pack(unsigned char *packed, int frag, int state) {
+    int byte_idx = frag >> 2;
+    int bit_off = (frag & 3) * 2;
+    packed[byte_idx] = (unsigned char)((packed[byte_idx] & ~(0x3 << bit_off)) | ((state & 0x3) << bit_off));
+}
+
+static inline int pc_wo_state_unpack(const unsigned char *packed, int frag) {
+    int byte_idx = frag >> 2;
+    int bit_off = (frag & 3) * 2;
+    return (packed[byte_idx] >> bit_off) & 0x3;
+}
+
 typedef struct {
     float x, y, z;   /* real world position -- y is the object's own real CENTER height (matches
                          paper_generate_box's own convention: the original g_test_cube_y was

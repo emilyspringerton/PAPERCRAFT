@@ -580,8 +580,11 @@ full embedded, in-game PARENA editor/modding toolchain (a real, no-rebuild-neede
 version of the modding pipeline built on top of that now-proven mechanism; `MODDING.md`'s own
 "What's honestly not here yet" has the full real gap list), a real graphical/live-server map
 editor, real fragment physics/collision, and full-city `VoxelBlock` conversion (every real block
-individually destructible, which the real wire budget genuinely can't support at that scale)
-remain real, later work, the same sequencing discipline
+individually destructible, still genuinely blocked on real wire-budget accounting, though that
+budget is now measurably roomier — `world_object_state` bit-packing (2026-08-29,
+`packages/common/papercraft_worldobjects.h`'s own `PC_WO_STATE_BYTES`) cut `sizeof(PcSnapshotPacket)`
+from a real, measured 1408 bytes to 1120, a real 288-byte headroom gain, not a decision to raise
+`PC_WO_MAX_OBJECTS` itself) remain real, later work, the same sequencing discipline
 `WEAKNIGHT_BEDROCK_RACERS` already used (its own Phase 0 shipped a single vehicle on one chunk
 before Phase 1 added a second vehicle or destruction).
 

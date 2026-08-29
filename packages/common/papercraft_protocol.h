@@ -246,16 +246,20 @@ typedef struct {
  * by paper_mesh_test.c), so only per-fragment STATE crosses the wire every tick, not geometry --
  * the same real "seed + per-fragment deltas, not the whole mesh" shape paper_mesh.h's own doc
  * comment already named as the target wire format, now spanning a real, editor-authored object
- * list instead of one hardcoded prop. Real, honest size note: PC_WO_MAX_OBJECTS=4 keeps
- * sizeof(PcSnapshotPacket) (1408 bytes as of the real carve-out fields below) comfortably under
- * a real 1472-byte (Ethernet MTU minus IP/UDP headers) unfragmented-UDP-packet budget -- fine for
- * this proof point's own real localhost/LAN testing; a real production deployment sensitive to
- * WAN fragmentation is real, later, flagged work, not addressed here (raising PC_WO_MAX_OBJECTS
- * or adding per-object relevance/streaming both eat into that same real budget and need real,
- * deliberate accounting when they happen). PcWorldObjectDef's own real carve_* fields are packed
- * as `unsigned char`, not `int`, specifically to keep this budget real and honest -- chunk-local
- * block coordinates are always genuinely small (0..15 for X/Z, comfortably under 255 for Y), so
- * the wider type would have been pure real waste broadcast every snapshot for no real benefit. */
+ * list instead of one hardcoded prop. Real, honest size note, re-measured (2026-08-29) after
+ * `world_object_state` moved to a real, bit-packed `PC_WO_STATE_BYTES` shape (2 bits/fragment --
+ * see `papercraft_worldobjects.h`'s own doc comment for the full real reasoning): `PC_WO_MAX_OBJECTS`=4
+ * keeps `sizeof(PcSnapshotPacket)` comfortably under a real 1472-byte (Ethernet MTU minus IP/UDP
+ * headers) unfragmented-UDP-packet budget, with real, measured headroom now, not just "fits
+ * today" -- fine for this proof point's own real localhost/LAN testing; a real production
+ * deployment sensitive to WAN fragmentation is real, later, flagged work, not addressed here
+ * (raising `PC_WO_MAX_OBJECTS` or adding per-object relevance/streaming still eat into that same
+ * real budget and need real, deliberate accounting when they happen, same as before -- this fix
+ * makes that real accounting more favorable, it doesn't remove the need for it).
+ * PcWorldObjectDef's own real carve_* fields are packed as `unsigned char`, not `int`,
+ * specifically to keep this budget real and honest -- chunk-local block coordinates are always
+ * genuinely small (0..15 for X/Z, comfortably under 255 for Y), so the wider type would have been
+ * pure real waste broadcast every snapshot for no real benefit. */
 typedef struct {
     PcHeader hdr;
     unsigned int server_tick;
@@ -263,7 +267,10 @@ typedef struct {
     PcPlayerState players[PC_MAX_PLAYERS];
     unsigned char world_object_active[PC_WO_MAX_OBJECTS];
     PcWorldObjectDef world_objects[PC_WO_MAX_OBJECTS];
-    unsigned char world_object_state[PC_WO_MAX_OBJECTS][PC_WO_FRAGMENTS]; /* PAPER_STATE_* per fragment */
+    unsigned char world_object_state[PC_WO_MAX_OBJECTS][PC_WO_STATE_BYTES]; /* real, bit-packed
+        PAPER_STATE_* per fragment, 2 bits each -- pc_wo_state_pack/pc_wo_state_unpack
+        (papercraft_worldobjects.h) are the real, only sanctioned way to read/write this, not a
+        direct index (the real fragment-to-bit mapping isn't 1:1 with the byte array anymore). */
 } PcSnapshotPacket;
 
 #endif

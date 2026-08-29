@@ -337,8 +337,16 @@ is real but cosmetic-only — no real collision with the world/players, no serve
 client simulates its own copy independently), no real weapon/combat system beyond a bare punch
 with distance falloff (`PC_PACKET_INTERACT` still carries no aim/spread/weapon-type data), and
 only a small, editor-placed set of real objects (`apps/mapeditor`,
-`PC_WO_MAX_OBJECTS=4`) — full-city conversion (every real `VoxelBlock` individually destructible,
-which the real wire budget genuinely can't support at this scale) remains separate, future work.
+`PC_WO_MAX_OBJECTS=4`) — full-city conversion (every real `VoxelBlock` individually destructible)
+remains separate, future work, still genuinely blocked on real wire-budget accounting, though that
+budget is now measurably less tight than it was: `world_object_state`'s own real per-fragment
+state is bit-packed (2026-08-29, 2 bits/fragment instead of a full byte — see
+`packages/common/papercraft_worldobjects.h`'s own `PC_WO_STATE_BYTES`/`pc_wo_state_pack`/
+`pc_wo_state_unpack`), cutting `sizeof(PcSnapshotPacket)` from a real, measured 1408 bytes to
+1120 — 288 real bytes of new headroom under the real 1472-byte unfragmented-UDP budget. This is a
+real, narrow, mechanical wire optimization only, not a decision to raise `PC_WO_MAX_OBJECTS` or
+attempt full-city conversion itself — a real, separate, later call, now genuinely better-informed
+by real, measured headroom rather than the old, tighter number.
 
 **A real L-shaped/multi-part object matching a carved wall's own exact real footprint is now
 partially shipped (2026-08-29)**, not still a flat gap: Wall A is a real, precise two-box
