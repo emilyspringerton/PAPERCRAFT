@@ -658,11 +658,24 @@ a real probe reading the new `falling_active`/`falling[]` wire fields directly, 
 punched the real fragment, watched its own real `y` decrease tick over tick under real gravity
 (`65.285 → 65.195 → 65.075` across three real polls), then watched it land (vanish from the wire,
 slot freed) at a real, sane height matching the actual ground — all while the pre-existing real
-destroy/XP-award flow (`+60 XP`, level-up) fired exactly as before, unaffected. Real, honest scope
-note: this run verified one real fragment falling in isolation; the real, bounded multi-fragment
-array logic (first-free-slot vs. round-robin eviction) got a live smoke attempt too, inconclusive
-due to real probe-positioning timing sensitivity unrelated to the physics code itself, not a
-confirmed defect — a real, small, separate follow-up if it matters before Phase 1b.
+destroy/XP-award flow (`+60 XP`, level-up) fired exactly as before, unaffected.
+
+**Real, bounded multi-fragment verification closed out the same day.** The first live smoke
+attempt at two simultaneous real fragments was inconclusive (real probe-positioning timing, not a
+defect) — traced to a real root cause on retry, not left as a shrug: the real probe's own
+"facing pulse" briefly moved the player a full real unit sideways instead of just setting yaw
+(fixed by using a small `mx` value, which sets the same real `atan2`-derived facing without the
+real positional side effect), and the first fragment pair chosen (24+25) turned out to differ in
+real local Y by 0.75 — not simultaneously reachable from one real grounded hit point at all, a
+real geometric fact confirmed by hand-tracing the distance math, not a probe bug. Retried with a
+real pair sharing the same local Y (fragments 20+24, real, measured 0.75 units apart along Z
+only): a single real punch broke both at once (`"2 fragment(s) broke off"`), and the real
+`falling[]` broadcast correctly showed both as separate, simultaneously active entries
+(`falling[0]`=fragment 20, `falling[1]`=fragment 24, both starting at the same real `y`), while
+the object's own real destroy/XP-award latch fired exactly once (`+60 XP`) as it should for a
+single object regardless of how many real fragments broke at once. Confirms the real, bounded
+slot-allocation logic (first free, else round-robin) correctly tracks multiple concurrent real
+detach events, not just the single-fragment case.
 
 **Phase 1b shipped the same day too.** `apps/client` now renders the real server-authoritative
 fall, not just its own older cosmetic debris. Real, deliberate design choice, not a full 1:1
