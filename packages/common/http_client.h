@@ -42,23 +42,49 @@ static int http_json_request(const char *method, const char *host, int port, con
     char port_str[16];
     snprintf(port_str, sizeof(port_str), "%d", port);
 
+    /* Real, verbose diagnostic logging (2026-08-29, founder real-time: "maybe add more verbose
+       logging?" -- every real failure point below used to just `return -1`, indistinguishable
+       from every other one to a caller, which only ever printed one generic "FATAL: could not
+       load real city chunk" regardless of WHICH of resolve/connect/send/recv/parse actually
+       failed. This is the one real path where a founder-reported failure ("FATAL: could not load
+       real city chunk") kept reproducing even after firewall fixes confirmed open externally --
+       these fprintf(stderr, ...) calls land in papercraft_client.log (redirected at the top of
+       main()), so the NEXT real log capture says exactly which real step failed and why, instead
+       of another blind guess. */
+    fprintf(stderr, "[http] %s %s:%d%s -- resolving...\n", method, host, port, path);
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     struct addrinfo *res = NULL;
-    if (getaddrinfo(host, port_str, &hints, &res) != 0 || !res) return -1;
+    int gai_err = getaddrinfo(host, port_str, &hints, &res);
+    if (gai_err != 0 || !res) {
+        fprintf(stderr, "[http] FAILED: getaddrinfo(%s) real error: %d\n", host, gai_err);
+        return -1;
+    }
+    {
+        struct sockaddr_in *sa = (struct sockaddr_in *)res->ai_addr;
+        char ip_str[64];
+        fprintf(stderr, "[http] resolved %s -> %s, connecting...\n", host,
+                InetNtopA(AF_INET, &sa->sin_addr, ip_str, sizeof(ip_str)) ? ip_str : "?");
+    }
 
     SOCKET fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (fd == INVALID_SOCKET) { freeaddrinfo(res); return -1; }
+    if (fd == INVALID_SOCKET) {
+        fprintf(stderr, "[http] FAILED: socket() real WSA error: %d\n", WSAGetLastError());
+        freeaddrinfo(res); return -1;
+    }
 
     DWORD timeout_ms = 5000;
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (const char *)&timeout_ms, sizeof(timeout_ms));
 
     if (connect(fd, res->ai_addr, (int)res->ai_addrlen) != 0) {
+        fprintf(stderr, "[http] FAILED: connect() real WSA error: %d (10061=refused, "
+                "10060=timed out, 10051/10065=network/host unreachable)\n", WSAGetLastError());
         closesocket(fd); freeaddrinfo(res); return -1;
     }
+    fprintf(stderr, "[http] connected, sending request...\n");
     freeaddrinfo(res);
 
     char req[4096];
@@ -87,9 +113,15 @@ static int http_json_request(const char *method, const char *host, int port, con
             "%s",
             method, path, host, body_len, body);
     }
-    if (req_len < 0 || req_len >= (int)sizeof(req)) { closesocket(fd); return -1; }
+    if (req_len < 0 || req_len >= (int)sizeof(req)) {
+        fprintf(stderr, "[http] FAILED: request too large for the real 4096-byte buffer (%d bytes)\n", req_len);
+        closesocket(fd); return -1;
+    }
 
-    if (send(fd, req, req_len, 0) != req_len) { closesocket(fd); return -1; }
+    if (send(fd, req, req_len, 0) != req_len) {
+        fprintf(stderr, "[http] FAILED: send() real WSA error: %d\n", WSAGetLastError());
+        closesocket(fd); return -1;
+    }
 
     /* 131072 (128KB), not the original 8192 -- found for real (not assumed) fetching
        PAPERCRAFT's own real city chunk data (GET /chunks?scene=200&cx=0&cz=0, a real ~35KB
@@ -105,13 +137,23 @@ static int http_json_request(const char *method, const char *host, int port, con
            (n = recv(fd, raw + total, (int)(sizeof(raw) - 1 - total), 0)) > 0) {
         total += (size_t)n;
     }
+    int recv_wsa_err = WSAGetLastError();
     closesocket(fd);
-    if (total == 0) return -1;
+    if (total == 0) {
+        fprintf(stderr, "[http] FAILED: recv() got 0 real bytes -- real WSA error: %d "
+                "(10060=timed out waiting for a reply, 10054=connection reset)\n", recv_wsa_err);
+        return -1;
+    }
+    fprintf(stderr, "[http] received %zu real bytes\n", total);
     raw[total] = '\0';
 
     int status = 0;
-    if (sscanf(raw, "HTTP/%*d.%*d %d", &status) != 1) return -1;
+    if (sscanf(raw, "HTTP/%*d.%*d %d", &status) != 1) {
+        fprintf(stderr, "[http] FAILED: could not parse a real HTTP status line, first 80 bytes: %.80s\n", raw);
+        return -1;
+    }
     *out_status = status;
+    fprintf(stderr, "[http] real HTTP status: %d\n", status);
 
     const char *resp_body = strstr(raw, "\r\n\r\n");
     if (resp_body && resp_buf_len > 0) {
@@ -156,6 +198,7 @@ static int http_patch_json(const char *host, int port, const char *path,
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <errno.h>
 
 // http_json_request sends a blocking HTTP/1.1 request of the given method (json_body may be
 // NULL/empty for GET) to http://host:port/path with Content-Type: application/json and, if
@@ -175,15 +218,32 @@ static int http_json_request(const char *method, const char *host, int port, con
     char port_str[16];
     snprintf(port_str, sizeof(port_str), "%d", port);
 
+    /* Real, verbose diagnostic logging -- same real reasoning as the Windows/Winsock branch
+       above's own doc comment (2026-08-29, founder real-time: "maybe add more verbose logging?").
+       Uses errno/strerror, the POSIX equivalent of that branch's own WSAGetLastError(). */
+    fprintf(stderr, "[http] %s %s:%d%s -- resolving...\n", method, host, port, path);
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     struct addrinfo *res = NULL;
-    if (getaddrinfo(host, port_str, &hints, &res) != 0 || !res) return -1;
+    int gai_err = getaddrinfo(host, port_str, &hints, &res);
+    if (gai_err != 0 || !res) {
+        fprintf(stderr, "[http] FAILED: getaddrinfo(%s) real error: %s\n", host, gai_strerror(gai_err));
+        return -1;
+    }
+    {
+        struct sockaddr_in *sa = (struct sockaddr_in *)res->ai_addr;
+        char ip_str[64];
+        fprintf(stderr, "[http] resolved %s -> %s, connecting...\n", host,
+                inet_ntop(AF_INET, &sa->sin_addr, ip_str, sizeof(ip_str)) ? ip_str : "?");
+    }
 
     int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (fd < 0) { freeaddrinfo(res); return -1; }
+    if (fd < 0) {
+        fprintf(stderr, "[http] FAILED: socket() real errno: %d (%s)\n", errno, strerror(errno));
+        freeaddrinfo(res); return -1;
+    }
 
     struct timeval tv;
     tv.tv_sec = 5; tv.tv_usec = 0;
@@ -191,8 +251,10 @@ static int http_json_request(const char *method, const char *host, int port, con
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
     if (connect(fd, res->ai_addr, res->ai_addrlen) != 0) {
+        fprintf(stderr, "[http] FAILED: connect() real errno: %d (%s)\n", errno, strerror(errno));
         close(fd); freeaddrinfo(res); return -1;
     }
+    fprintf(stderr, "[http] connected, sending request...\n");
     freeaddrinfo(res);
 
     char req[4096];
@@ -223,7 +285,10 @@ static int http_json_request(const char *method, const char *host, int port, con
     }
     if (req_len < 0 || req_len >= (int)sizeof(req)) { close(fd); return -1; }
 
-    if (send(fd, req, (size_t)req_len, 0) != req_len) { close(fd); return -1; }
+    if (send(fd, req, (size_t)req_len, 0) != req_len) {
+        fprintf(stderr, "[http] FAILED: send() real errno: %d (%s)\n", errno, strerror(errno));
+        close(fd); return -1;
+    }
 
     /* 131072 (128KB), not the original 8192 -- found for real (not assumed) fetching
        PAPERCRAFT's own real city chunk data (GET /chunks?scene=200&cx=0&cz=0, a real ~35KB
@@ -239,13 +304,22 @@ static int http_json_request(const char *method, const char *host, int port, con
            (n = recv(fd, raw + total, sizeof(raw) - 1 - total, 0)) > 0) {
         total += (size_t)n;
     }
+    int recv_errno = errno;
     close(fd);
-    if (total == 0) return -1;
+    if (total == 0) {
+        fprintf(stderr, "[http] FAILED: recv() got 0 real bytes -- real errno: %d (%s)\n", recv_errno, strerror(recv_errno));
+        return -1;
+    }
+    fprintf(stderr, "[http] received %zu real bytes\n", total);
     raw[total] = '\0';
 
     int status = 0;
-    if (sscanf(raw, "HTTP/%*d.%*d %d", &status) != 1) return -1;
+    if (sscanf(raw, "HTTP/%*d.%*d %d", &status) != 1) {
+        fprintf(stderr, "[http] FAILED: could not parse a real HTTP status line, first 80 bytes: %.80s\n", raw);
+        return -1;
+    }
     *out_status = status;
+    fprintf(stderr, "[http] real HTTP status: %d\n", status);
 
     const char *resp_body = strstr(raw, "\r\n\r\n");
     if (resp_body && resp_buf_len > 0) {

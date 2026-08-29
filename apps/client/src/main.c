@@ -629,9 +629,28 @@ int main(int argc, char **argv) {
                 char path[128];
                 snprintf(path, sizeof(path), "/chunks?scene=200&cx=%d&cz=%d", cx, cz);
                 int status = 0;
-                if (http_get_json(worldapi_host, worldapi_port, path, NULL, resp, sizeof(resp), &status) != 0
-                    || status != 200 || !pw_parse_chunks_json(resp, &g_world.chunks[idx])) {
-                    fprintf(stderr, "FATAL: could not load real city chunk (%d,%d) from worldapi -- refusing to run on fake/empty terrain.\n", cx, cz);
+                /* Real, distinct error context per real failure mode (2026-08-29, founder
+                   real-time: "is there more info at the error boundary... at each level of an
+                   error getting returned are we giving context to see where in the code that
+                   is?") -- these three real failure modes (a real network-level failure inside
+                   http_get_json itself, a real non-200 HTTP status, a real JSON-parse failure on
+                   an otherwise-successful 200 response) used to collapse into one identical FATAL
+                   line with no way to tell which one actually happened. http_client.h's own
+                   http_json_request now logs its own real internal detail (resolve/connect/send/
+                   recv/parse) for the first case; this call site now distinguishes the other two
+                   from each other and from that first case, so papercraft_client.log tells the
+                   real story at both real layers, not just the innermost one. */
+                int http_rc = http_get_json(worldapi_host, worldapi_port, path, NULL, resp, sizeof(resp), &status);
+                if (http_rc != 0) {
+                    fprintf(stderr, "FATAL: real network-level failure fetching city chunk (%d,%d) from worldapi %s:%d -- see the [http] lines just above this one for exactly which real step failed.\n", cx, cz, worldapi_host, worldapi_port);
+                    return 1;
+                }
+                if (status != 200) {
+                    fprintf(stderr, "FATAL: worldapi %s:%d real HTTP status %d fetching city chunk (%d,%d) (expected 200).\n", worldapi_host, worldapi_port, status, cx, cz);
+                    return 1;
+                }
+                if (!pw_parse_chunks_json(resp, &g_world.chunks[idx])) {
+                    fprintf(stderr, "FATAL: worldapi %s:%d returned a real 200 for city chunk (%d,%d), but the real response body failed to parse as chunk JSON.\n", worldapi_host, worldapi_port, cx, cz);
                     return 1;
                 }
                 g_world.loaded[idx] = 1;
