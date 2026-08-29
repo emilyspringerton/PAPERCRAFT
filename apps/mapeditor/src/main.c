@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 #include "../../../packages/common/http_client.h"
 #include "../../../packages/common/papercraft_world.h"
@@ -64,7 +65,8 @@ static void print_usage(void) {
         "  block coordinates, inclusive) -- apps/server/apps/client both remove those exact real\n"
         "  blocks from the normal solid render/ground-collision path before spawning this object,\n"
         "  so a real modder can carve real city geometry out and replace it with a destructible\n"
-        "  object, not just place a new standalone prop.\n");
+        "  object, not just place a new standalone prop. add also warns (doesn't block) if the\n"
+        "  new object's own real bounding box overlaps an already-placed one's.\n");
 }
 
 static int parse_material(const char *s) {
@@ -115,6 +117,18 @@ static int cmd_remove(const char *path, int index) {
     }
     printf("Removed real object %d from %s -- %d object(s) remain.\n", index, path, wf.count);
     return 0;
+}
+
+/* aabb_overlap: real, minimal axis-aligned-bounding-box overlap test -- two real objects'
+   own [center-half, center+half] boxes overlap if they overlap on all three real axes. Used to
+   warn a modder placing a new object on top of (or inside) an existing one, real editor-safety
+   the previous, purely additive `add` command never checked. */
+static int aabb_overlap(float ax, float ay, float az, float ahx, float ahy, float ahz,
+                         float bx, float by, float bz, float bhx, float bhy, float bhz) {
+    if (fabsf(ax - bx) > (ahx + bhx)) return 0;
+    if (fabsf(ay - by) > (ahy + bhy)) return 0;
+    if (fabsf(az - bz) > (ahz + bhz)) return 0;
+    return 1;
 }
 
 static int cmd_add(const char *path, float x, float z, int material,
@@ -169,6 +183,20 @@ static int cmd_add(const char *path, float x, float z, int material,
             return 1;
         }
         y = (float)ground_y + half_y; /* real center height -- ground + the real vertical half-extent */
+    }
+
+    /* Real, minimal editor safety: warn (don't block -- a real, later use case might genuinely
+       want two objects to overlap, e.g. a deliberate layered effect) if this new object's own
+       real bounding box overlaps an already-placed one's. The previous version of `add` was
+       purely additive with no such check at all. */
+    for (int i = 0; i < wf.count; i++) {
+        const PcWorldObjectDef *existing = &wf.objects[i];
+        if (aabb_overlap(x, y, z, half_x, half_y, half_z,
+                          existing->x, existing->y, existing->z,
+                          existing->half_x, existing->half_y, existing->half_z)) {
+            fprintf(stderr, "WARNING: new object's real bounding box overlaps existing object %d (pos=(%.2f,%.2f,%.2f) half=(%.2f,%.2f,%.2f)) -- placing anyway.\n",
+                    i, existing->x, existing->y, existing->z, existing->half_x, existing->half_y, existing->half_z);
+        }
     }
 
     PcWorldObjectDef *def = &wf.objects[wf.count];

@@ -243,9 +243,11 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   still unresolved: whether/how this relates to `WEAKNIGHT_BEDROCK_RACERS`' own same-day "map
   editor from day 1" note (`EMILY/BACKLOG.md` S204-08) — same idea independently named for both
   repos, or one shared tool. Not resolved here. Not yet built: a real graphical/in-game editor
-  (this pass is offline-CLI only, no live-server editing), variable per-object subdivision, and
-  real integration with the city's own `VoxelBlock` geometry (only Paper Engine props are
-  editable so far, not the city itself).
+  (this pass is offline-CLI only, no live-server editing), and variable per-object subdivision.
+  `apps/mapeditor` since grew a real `--carve` flag and AABB overlap warnings (2026-08-29, see
+  `docs/NORTHSTAR_PAPER_ENGINE.md`'s own "Real, general, data-driven carve-out now" section) —
+  real integration with the city's own `VoxelBlock` geometry is real now for two named wall
+  structures, not the whole city yet.
 
 ## The real, longer-arc modding vision
 
