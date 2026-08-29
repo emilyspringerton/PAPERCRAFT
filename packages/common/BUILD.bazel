@@ -49,3 +49,14 @@ cc_test(
     srcs = ["papercraft_worldobjects_test.c"],
     deps = [":common_headers"],
 )
+
+# papercraft_falling_test -- real, pure, headless coverage for pc_falling_lookup_y
+# (papercraft_protocol.h's own real Phase 1b lookup, NORTHSTAR.md's own "Real Phase 1" section).
+# apps/client's own update_and_draw_debris calls this same real function every frame; this test
+# is the real, standing regression check for it that a live graphical client session can't
+# provide in this environment (no known real test IDUNA user for full login automation).
+cc_test(
+    name = "papercraft_falling_test",
+    srcs = ["papercraft_falling_test.c"],
+    deps = [":common_headers"],
+)

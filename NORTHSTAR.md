@@ -664,11 +664,34 @@ array logic (first-free-slot vs. round-robin eviction) got a live smoke attempt 
 due to real probe-positioning timing sensitivity unrelated to the physics code itself, not a
 confirmed defect — a real, small, separate follow-up if it matters before Phase 1b.
 
-Not yet done, deliberately: `apps/client` doesn't render the real server-authoritative fall at all
-yet (still shows only its own real cosmetic debris) — wiring the client to actually draw
-`falling[]`'s own real data is Phase 1b, the natural next real slice, not attempted in this pass
-(matching the exact same "prove the mechanism, then integrate" sequencing `apps/dynmod_poc` → the
-real `apps/server` call site already used for dynamic mod loading).
+**Phase 1b shipped the same day too.** `apps/client` now renders the real server-authoritative
+fall, not just its own older cosmetic debris. Real, deliberate design choice, not a full 1:1
+replacement: Phase 1a's own server-side physics is vertical-only (no lateral scatter, an explicit
+Phase 1a non-goal) while the client's own existing "shotgun blast" outward kick (`vx`/`vz`) already
+looked good — fully replacing it would have been a real visual regression for the sake of
+authority, not an improvement. Real, honest split instead: for a real debris piece whose own
+`(object_idx, fragment_idx)` currently matches an active real entry in the server's own
+`falling[]` broadcast, the real, server-authoritative `y` REPLACES local vertical simulation for
+that frame (real physics wins the moment real data exists); the horizontal `x`/`z` motion stays
+exactly as it always was, real client-side cosmetic flourish. A piece with no current real match
+(never tracked, evicted under the server's own small `PC_FALLING_FRAGMENTS_MAX` cap, or already
+landed) falls back to the exact same real local simulation unchanged — zero behavior change for
+that real, common case.
+
+The real lookup itself (`pc_falling_lookup_y`, `packages/common/papercraft_protocol.h`) is pulled
+out as its own real, pure, header-level function — no OpenGL/SDL dependency — specifically so it's
+real, independently testable without a live graphical client or a real IDUNA login (this
+environment has no known real test user for full login automation, the same real, honest scope
+note S206-40's own client-side half already carried). New
+`packages/common/papercraft_falling_test.c`: 8 real assertions (a real match, a real object-only
+partial match, a real fragment-only partial match, a real inactive-slot non-match, a real
+all-zero-snapshot non-match, and two real multi-slot scenarios) — all pass. Verified live, fully
+clean (`bazel clean`, then a plain `bazel build`/`bazel test`, no special flags): 27 targets, 12/12
+tests pass, including this new one. The rendering integration itself (the `update_and_draw_debris`
+call site) was verified by clean compilation and careful manual tracing of the real coordinate
+math (confirmed by hand that a piece's own real centroid tracks the real server `y` exactly while
+its own real jittered vertex shape stays intact) — not a live graphical Xvfb session, the same
+honest scope limit as before.
 
 Not scoped here: Phase 1's own remaining items (weapon/combat, the embedded editor, full-city
 conversion) stay real, later, deliberately unscoped until each gets its own real founder-direction

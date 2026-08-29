@@ -52,11 +52,13 @@ structures, each a precise multi-box L-shape, are carved out today, not the whol
 budget is measurably roomier than it was but still doesn't support that at full scale). Nothing
 here is claimed as done that isn't.
 
-**Server-authoritative fragment physics has a real first slice now** (`NORTHSTAR.md`'s own "Real
-Phase 1" section): a real, small, bounded set of just-detached fragments fall under real gravity
-and land at the real ground height, server-side and broadcast over the wire — verified live via a
-real UDP probe reading the actual packet fields. `apps/client` doesn't render this yet (still
-shows only its own older, cosmetic debris) — that's the deliberate next slice, not this one.
+**Server-authoritative fragment physics has a real first slice now, client included**
+(`NORTHSTAR.md`'s own "Real Phase 1" section): a real, small, bounded set of just-detached
+fragments fall under real gravity and land at the real ground height, server-side and broadcast
+over the wire — verified live via a real UDP probe reading the actual packet fields.
+`apps/client` now renders the real, server-authoritative vertical fall for a matching piece,
+keeping its own older cosmetic horizontal "shotgun blast" scatter for everything else (a
+deliberate split, not a compromise — see `NORTHSTAR.md` for the real reasoning).
 
 ## Quick start
 
@@ -78,9 +80,9 @@ Build PAPERCRAFT:
 
 ```bash
 bazel build //...
-bazel test //...   # 11 real tests: 8 PARENA mod/geometry tests (packages/simulation) + 3 pure
+bazel test //...   # 12 real tests: 8 PARENA mod/geometry tests (packages/simulation) + 4 pure
                     # host-C tests (packages/common: HMAC RFC 4231 vectors, player-save round-trip,
-                    # world-object/damage-file round-trip)
+                    # world-object/damage-file round-trip, Phase 1b falling-fragment lookup)
 ```
 
 Run a real server (needs a real `worldapi` instance for city terrain, and a matching

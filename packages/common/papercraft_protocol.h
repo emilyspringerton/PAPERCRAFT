@@ -335,4 +335,30 @@ typedef struct {
     PcFallingFragment falling[PC_FALLING_FRAGMENTS_MAX];
 } PcSnapshotPacket;
 
+/* pc_falling_lookup_y: real Phase 1b logic (2026-08-29, NORTHSTAR.md's own "Real Phase 1"
+ * section) -- given a real (object_idx, fragment_idx) pair, scans a real snapshot's own
+ * falling[] broadcast for an active match and writes its real, current, server-authoritative y
+ * to *out_y. Returns 1 on a real match, 0 otherwise (caller falls back to local, client-side
+ * simulation for that piece -- untracked, evicted under the real, small
+ * PC_FALLING_FRAGMENTS_MAX cap, or already landed are all real, honest, expected cases, not
+ * errors).
+ *
+ * Pulled out as its own real, pure, header-level function -- no OpenGL/SDL dependency at all --
+ * specifically so it's real, independently testable (packages/common/
+ * papercraft_falling_test.c) without a live graphical client or a real IDUNA login, the same
+ * real reason paper_mesh.h's own geometry functions live in a header instead of being inlined
+ * into apps/client directly. apps/client's own update_and_draw_debris calls this once per real
+ * debris piece per frame; it does not duplicate this real lookup logic itself. */
+static inline int pc_falling_lookup_y(const PcSnapshotPacket *snap, int object_idx, int fragment_idx, float *out_y) {
+    for (int fi = 0; fi < PC_FALLING_FRAGMENTS_MAX; fi++) {
+        if (snap->falling_active[fi] &&
+            snap->falling[fi].object_idx == (unsigned char)object_idx &&
+            snap->falling[fi].fragment_idx == (unsigned char)fragment_idx) {
+            *out_y = snap->falling[fi].y;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 #endif

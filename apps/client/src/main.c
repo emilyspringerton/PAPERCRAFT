@@ -358,9 +358,16 @@ typedef struct {
                                     so the piece visually IS the fragment, not a generic chunk */
     float anchor_x, anchor_y, anchor_z; /* the real object's own world position when it broke */
     float offset_x, offset_y, offset_z; /* accumulated real translation since breaking */
+    float center_y; /* the real fragment's own local center.y at spawn time -- needed to convert a
+                        real server-authoritative absolute Y (Phase 1b, see below) back into this
+                        piece's own real offset_y space */
     float vx, vy, vz;
     float age;
     int material;
+    int object_idx, fragment_idx; /* real Phase 1b correlation keys -- which real world object and
+                                      fragment this piece came from, so it can be matched against
+                                      the real server-authoritative PcFallingFragment wire data
+                                      (NORTHSTAR.md's own "Real Phase 1a" section) each frame */
     int active;
 } PcDebrisPiece;
 
@@ -371,7 +378,8 @@ typedef struct {
    upward pop, plus real bounded jitter so a multi-fragment break doesn't look like a perfectly
    uniform starburst. */
 static void spawn_debris_for_fragment(PcDebrisPiece *pool, int *cursor, const PaperCubeMesh *mesh,
-                                       int frag_idx, float anchor_x, float anchor_y, float anchor_z) {
+                                       int frag_idx, float anchor_x, float anchor_y, float anchor_z,
+                                       int object_idx) {
     const PaperFragment *f = &mesh->fragments[frag_idx];
     PcDebrisPiece *d = &pool[*cursor];
     *cursor = (*cursor + 1) % PC_MAX_DEBRIS;
@@ -379,6 +387,9 @@ static void spawn_debris_for_fragment(PcDebrisPiece *pool, int *cursor, const Pa
     for (int c = 0; c < 4; c++) d->local_corners[c] = f->corners[c];
     d->anchor_x = anchor_x; d->anchor_y = anchor_y; d->anchor_z = anchor_z;
     d->offset_x = 0.0f; d->offset_y = 0.0f; d->offset_z = 0.0f;
+    d->center_y = f->center.y;
+    d->object_idx = object_idx;
+    d->fragment_idx = frag_idx;
 
     /* Real outward kick, scaled by the fragment's own real distance from the object center
        (f->center is already local-space, i.e. relative to the object's own real anchor) --
@@ -398,8 +409,24 @@ static void spawn_debris_for_fragment(PcDebrisPiece *pool, int *cursor, const Pa
 /* update_and_draw_debris: real, simple gravity integration (no rotation/collision -- real, later
    work, not needed to prove pieces fall/scatter instead of vanishing) every real frame, real
    fade via alpha blend over the piece's own last real half-second of life, despawns after
-   PC_DEBRIS_LIFETIME_S. */
-static void update_and_draw_debris(PcDebrisPiece *pool) {
+   PC_DEBRIS_LIFETIME_S.
+
+   Real Phase 1b (2026-08-29, NORTHSTAR.md's own "Real Phase 1" section): for a real piece whose
+   own (object_idx, fragment_idx) currently matches an ACTIVE real entry in the server's own
+   PcFallingFragment broadcast (S206-47), the real, server-authoritative y REPLACES this piece's
+   own local vertical simulation for that frame -- real physics wins over cosmetic guesswork the
+   moment real data is available, same "server decides, client renders the consequence" split
+   this whole repo already follows everywhere else. The real, horizontal (x/z) outward-scatter
+   motion is deliberately UNCHANGED -- Phase 1a's own server-side physics is vertical-only by
+   design (no lateral scatter), and replacing the client's own real, already-good "shotgun blast"
+   horizontal kick with nothing would be a real visual regression, not an improvement, so it
+   stays purely cosmetic/client-local, matching the real, honest split this function's own name
+   now implies: vertical is server-authoritative when real data exists, horizontal stays
+   client-side flourish. A piece with no current real match (never tracked, evicted for a newer
+   real detach event under the server's own small PC_FALLING_FRAGMENTS_MAX cap, or already
+   landed) falls back to the exact same real local simulation this function always used --
+   zero behavior change for that real, common case. */
+static void update_and_draw_debris(PcDebrisPiece *pool, const PcSnapshotPacket *snap) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glBegin(GL_QUADS);
@@ -408,9 +435,21 @@ static void update_and_draw_debris(PcDebrisPiece *pool) {
         if (!d->active) continue;
         d->age += PC_DEBRIS_DT;
         if (d->age >= PC_DEBRIS_LIFETIME_S) { d->active = 0; continue; }
-        d->vy -= PC_DEBRIS_GRAVITY * PC_DEBRIS_DT;
+
+        float real_y;
+        if (pc_falling_lookup_y(snap, d->object_idx, d->fragment_idx, &real_y)) {
+            /* Real, server-authoritative vertical position -- convert the real absolute y back
+               into this piece's own real offset_y space (see PcDebrisPiece's own center_y doc
+               comment). vy is zeroed too, so a later frame where this real match disappears
+               (landed, or evicted) resumes local simulation from real rest, not a real leftover
+               velocity from before real data took over. */
+            d->offset_y = real_y - d->anchor_y - d->center_y;
+            d->vy = 0.0f;
+        } else {
+            d->vy -= PC_DEBRIS_GRAVITY * PC_DEBRIS_DT;
+            d->offset_y += d->vy * PC_DEBRIS_DT;
+        }
         d->offset_x += d->vx * PC_DEBRIS_DT;
-        d->offset_y += d->vy * PC_DEBRIS_DT;
         d->offset_z += d->vz * PC_DEBRIS_DT;
 
         float fade = 1.0f;
@@ -880,7 +919,7 @@ int main(int argc, char **argv) {
                         spawn_debris_for_fragment(g_debris, &g_debris_cursor, &g_wo_mesh[o], f,
                                                    latest_snap.world_objects[o].x,
                                                    latest_snap.world_objects[o].y,
-                                                   latest_snap.world_objects[o].z);
+                                                   latest_snap.world_objects[o].z, o);
                     }
                 }
             }
@@ -890,7 +929,7 @@ int main(int argc, char **argv) {
                             latest_snap.world_objects[o].x, latest_snap.world_objects[o].y, latest_snap.world_objects[o].z);
         }
         g_prev_wo_state_valid = 1;
-        update_and_draw_debris(g_debris);
+        update_and_draw_debris(g_debris, &latest_snap);
         if (have_snapshot) {
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 if (!latest_snap.active[i]) continue;
