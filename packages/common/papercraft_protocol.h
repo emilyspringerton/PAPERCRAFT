@@ -152,45 +152,76 @@ typedef struct {
  * GFD's own worldapi urbanChunk generator already builds into scene 200's chunk (0,0), confirmed
  * live this session (GET /chunks?scene=200&cx=0&cz=0 -> real blocks at X in {12,13}/{0,1},
  * Z in {0,1}, Y in 65..69, each an L-shaped 3-column cluster, not a solid 2x2 -- (13,1)/(1,1) are
- * real, genuinely NOT present in the real data). Real, honest approximation, not the exact
- * L-shaped footprint (a real, later refinement would need a multi-part or L-shaped object).
+ * real, genuinely NOT present in the real data).
  *
  * The actual carve-out mechanism is now real, data-driven, general PcWorldObjectDef machinery
  * (packages/common/papercraft_worldobjects.h's own has_carve/carve_* fields) -- these constants
- * are just where apps/server's own real default-object seeding gets the two walls' own real
+ * are just where apps/server's own real default-object seeding gets the walls' own real
  * position/extent/carve-box values from, the same real role PC_DEFAULT_OBJECT_* already plays
  * for the original standalone test prop. Any world object (editor-placed or seeded) can carry
- * real carve bounds now, not just these two hardcoded cases -- apps/mapeditor's own --carve flag
- * lets a real modder add more. Still deliberately bounded: TWO real walls, not full-city
- * conversion -- PC_WO_MAX_OBJECTS stays a real, bounded 4 (test prop + 2 walls leaves exactly 1
- * free real slot), and converting every VoxelBlock in the whole real city into individually
- * destructible Paper Engine objects would blow that wire budget completely; this is the real,
- * smallest proof that city geometry CAN be carved out and replaced through a real, reusable
- * system, not the final pipeline. Scoped to chunk (0,0) only, even though the real 3x3 grid's
- * other 8 chunks currently carry byte-identical repeated content (PwWorld's own doc comment) --
- * carving all 9 copies out would be real, later, straightforward-but-unnecessary work. */
-#define PC_CITY_WALL_A_BLOCK_X0 12
-#define PC_CITY_WALL_A_BLOCK_X1 13
-#define PC_CITY_WALL_A_BLOCK_Z0 0
-#define PC_CITY_WALL_A_BLOCK_Z1 1
-#define PC_CITY_WALL_A_BLOCK_Y0 65
-#define PC_CITY_WALL_A_BLOCK_Y1 69
-/* Real object placement derived directly from the real block bounds above (world X in [12,14),
-   Z in [0,2), Y in [65,70) -- chunk (0,0)'s own origin is world (0,0), so chunk-local and world
-   coordinates are identical here). */
-#define PC_CITY_WALL_A_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE -- matches the real city's own concrete blocks */
-#define PC_CITY_WALL_A_SEED        20260829u
-#define PC_CITY_WALL_A_X 13.0f
-#define PC_CITY_WALL_A_Y 67.5f
-#define PC_CITY_WALL_A_Z 1.0f
-#define PC_CITY_WALL_A_HALF_X 1.0f
-#define PC_CITY_WALL_A_HALF_Y 2.5f
-#define PC_CITY_WALL_A_HALF_Z 1.0f
+ * real carve bounds now, not just these hardcoded cases -- apps/mapeditor's own --carve flag lets
+ * a real modder add more.
+ *
+ * Wall A is now a real, precise TWO-BOX L-shape (2026-08-29), not a bounding-box approximation --
+ * closes docs/NORTHSTAR_PAPER_ENGINE.md's own honestly-named "a real L-shaped/multi-part object
+ * matching a carved wall's own exact real footprint" gap, for this one wall. Re-confirmed live
+ * against the actual worldapi (not assumed from the old comment): the real 15 blocks split
+ * exactly into column (12,0)+(12,1) (a real 1x2x5 slab, PC_CITY_WALL_A1_*) and column (13,0) alone
+ * (a real 1x1x5 slab, PC_CITY_WALL_A2_*) -- together these two real carve boxes remove EXACTLY
+ * the real 15 blocks GFD's own generator placed, zero phantom overhang into the real, genuinely
+ * empty (13,1) column the old single 2x2x5 bounding box used to claim. Wall B stays a real,
+ * honest bounding-box approximation (same real reasoning, not upgraded this pass) -- using both
+ * of Wall A's real object slots plus Wall B plus the test prop now fills the real, bounded
+ * PC_WO_MAX_OBJECTS=4 cap completely, zero free real slots left; a real, explicit tradeoff, not
+ * an accident (this repo's own real wire budget can't fit a fifth object without either raising
+ * that cap -- real, separate wire-budget-accounting work -- or dropping one of the four). Still
+ * deliberately bounded to chunk (0,0), even though the real 3x3 grid's other 8 chunks currently
+ * carry byte-identical repeated content (PwWorld's own doc comment) -- carving all 9 copies out,
+ * or upgrading Wall B to its own real L-shape too, remain real, later, straightforward-but-
+ * unnecessary work. */
+#define PC_CITY_WALL_A1_BLOCK_X0 12
+#define PC_CITY_WALL_A1_BLOCK_X1 12
+#define PC_CITY_WALL_A1_BLOCK_Z0 0
+#define PC_CITY_WALL_A1_BLOCK_Z1 1
+#define PC_CITY_WALL_A1_BLOCK_Y0 65
+#define PC_CITY_WALL_A1_BLOCK_Y1 69
+/* Real object placement derived directly from the real block bounds above (world X in [12,13),
+   Z in [0,2), Y in [65,70)). */
+#define PC_CITY_WALL_A1_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE -- matches the real city's own concrete blocks */
+#define PC_CITY_WALL_A1_SEED        20260829u
+#define PC_CITY_WALL_A1_X 12.5f
+#define PC_CITY_WALL_A1_Y 67.5f
+#define PC_CITY_WALL_A1_Z 1.0f
+#define PC_CITY_WALL_A1_HALF_X 0.5f
+#define PC_CITY_WALL_A1_HALF_Y 2.5f
+#define PC_CITY_WALL_A1_HALF_Z 1.0f
+
+#define PC_CITY_WALL_A2_BLOCK_X0 13
+#define PC_CITY_WALL_A2_BLOCK_X1 13
+#define PC_CITY_WALL_A2_BLOCK_Z0 0
+#define PC_CITY_WALL_A2_BLOCK_Z1 0
+#define PC_CITY_WALL_A2_BLOCK_Y0 65
+#define PC_CITY_WALL_A2_BLOCK_Y1 69
+/* Real object placement derived directly from the real block bounds above (world X in [13,14),
+   Z in [0,1), Y in [65,70) -- the real column the old single bounding box over-claimed into empty
+   air at (13,1) has no object here at all, correctly, since no real block ever stood there. */
+#define PC_CITY_WALL_A2_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE */
+#define PC_CITY_WALL_A2_SEED        20260831u /* distinct from A1/B so all three don't share fragment geometry */
+#define PC_CITY_WALL_A2_X 13.5f
+#define PC_CITY_WALL_A2_Y 67.5f
+#define PC_CITY_WALL_A2_Z 0.5f
+#define PC_CITY_WALL_A2_HALF_X 0.5f
+#define PC_CITY_WALL_A2_HALF_Y 2.5f
+#define PC_CITY_WALL_A2_HALF_Z 0.5f
 
 /* PC_CITY_WALL_B_*: the real, second wall structure, confirmed live at chunk-local X in {0,1},
    Z in {0,1}, Y in 65..69 -- world bounding box [0,2) x [65,70) x [0,2) (chunk (0,0)'s own
-   origin is world (0,0)). A distinct real seed from wall A so the two don't render with
-   identical fragment geometry. */
+   origin is world (0,0)). Same real L-shape as Wall A's own (missing column at (1,1)) but still a
+   real, honest single-box bounding approximation, not upgraded to Wall A1/A2's own precise
+   two-box split this pass -- PC_WO_MAX_OBJECTS=4 is already fully used by the test prop + Wall
+   A1 + Wall A2 + this object, zero free real slots left for a genuine Wall B1/B2 split without
+   dropping one of the other three. Distinct real seed from Wall A1/A2 so all three don't render
+   with identical fragment geometry. */
 #define PC_CITY_WALL_B_BLOCK_X0 0
 #define PC_CITY_WALL_B_BLOCK_X1 1
 #define PC_CITY_WALL_B_BLOCK_Z0 0

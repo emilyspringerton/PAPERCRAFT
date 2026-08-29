@@ -338,10 +338,24 @@ client simulates its own copy independently), no real weapon/combat system beyon
 with distance falloff (`PC_PACKET_INTERACT` still carries no aim/spread/weapon-type data), and
 only a small, editor-placed set of real objects (`apps/mapeditor`,
 `PC_WO_MAX_OBJECTS=4`) — full-city conversion (every real `VoxelBlock` individually destructible,
-which the real wire budget genuinely can't support at this scale) and a real L-shaped/multi-part
-object matching a carved wall's own exact real footprint (rather than its bounding-box
-approximation) remain separate, future work. The
-bare-punch hit-detection gap named in an earlier draft of this section
-is now closed — see "Live-wired into the actual game loop" above. Real Phase 1 sequencing for the
-remaining items above is separate, future work, matching this repo's own "docs before software,
-smallest real proof point first" discipline.
+which the real wire budget genuinely can't support at this scale) remains separate, future work.
+
+**A real L-shaped/multi-part object matching a carved wall's own exact real footprint is now
+partially shipped (2026-08-29)**, not still a flat gap: Wall A is a real, precise two-box
+composition (`PC_CITY_WALL_A1_*`/`PC_CITY_WALL_A2_*`, `apps/server/src/main.c`'s own default
+seeding) matching its real 15-block L-shape exactly — re-confirmed live against the actual
+worldapi, not assumed — instead of one oversized bounding box that used to claim 5 blocks' worth
+of empty space at the real, genuinely-missing `(13,1)` column. Verified live: the two carve boxes
+remove exactly 10 + 5 = 15 real blocks from the actual chunk grid at startup, matching the real
+footprint with zero overhang. Wall B stays a real, honest single-box bounding approximation
+(same shape gap, not upgraded this pass) — using two object slots for Wall A now fills
+`PC_WO_MAX_OBJECTS=4` completely (test prop + Wall A1 + Wall A2 + Wall B), a real, explicit
+tradeoff: zero free slots remain for a genuine Wall B split, or anything else, without either
+raising that cap (real, separate wire-budget-accounting work — `PcSnapshotPacket`'s own size is
+unaffected by this change, since the array was always allocated at `PC_WO_MAX_OBJECTS` regardless
+of how many slots were actually in use) or dropping one of the four objects.
+
+The bare-punch hit-detection gap named in an earlier draft of this section is now closed — see
+"Live-wired into the actual game loop" above. Real Phase 1 sequencing for the remaining items
+above is separate, future work, matching this repo's own "docs before software, smallest real
+proof point first" discipline.

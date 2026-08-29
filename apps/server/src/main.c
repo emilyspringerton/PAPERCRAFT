@@ -594,50 +594,68 @@ int main(int argc, char **argv) {
             g_wo_file.objects[0].y = PC_DEFAULT_OBJECT_HALF_EXTENT;
         }
 
-        /* Real second/third default objects -- the two real, carved-out city walls
-           (PC_CITY_WALL_A_* / PC_CITY_WALL_B_*), each standing in exactly where its own real 15
-           VoxelBlocks used to be. Real position/extents/carve bounds are already derived
-           directly from that real block data (see the constants' own doc comment), not
+        /* Real second/third/fourth default objects -- the real, carved-out city walls
+           (PC_CITY_WALL_A1_* / PC_CITY_WALL_A2_* / PC_CITY_WALL_B_*), each standing in exactly where
+           its own real VoxelBlocks used to be. Real position/extents/carve bounds are already
+           derived directly from that real block data (see the constants' own doc comment), not
            ground-snapped like a normal editor placement. Wired through the same real, general
            has_carve/carve_* machinery apps/mapeditor's own --carve flag uses -- not a special
-           case. */
-        g_wo_file.count = 3;
-        g_wo_file.objects[1].x = PC_CITY_WALL_A_X;
-        g_wo_file.objects[1].y = PC_CITY_WALL_A_Y;
-        g_wo_file.objects[1].z = PC_CITY_WALL_A_Z;
-        g_wo_file.objects[1].material = PC_CITY_WALL_A_MATERIAL;
-        g_wo_file.objects[1].half_x = PC_CITY_WALL_A_HALF_X;
-        g_wo_file.objects[1].half_y = PC_CITY_WALL_A_HALF_Y;
-        g_wo_file.objects[1].half_z = PC_CITY_WALL_A_HALF_Z;
-        g_wo_file.objects[1].seed = PC_CITY_WALL_A_SEED;
+           case. Wall A is now a real, precise two-box L-shape (A1+A2), not one bounding box --
+           see papercraft_protocol.h's own updated doc comment for the full real reasoning and why
+           this fills PC_WO_MAX_OBJECTS=4 completely (zero free real slots left). */
+        g_wo_file.count = 4;
+        g_wo_file.objects[1].x = PC_CITY_WALL_A1_X;
+        g_wo_file.objects[1].y = PC_CITY_WALL_A1_Y;
+        g_wo_file.objects[1].z = PC_CITY_WALL_A1_Z;
+        g_wo_file.objects[1].material = PC_CITY_WALL_A1_MATERIAL;
+        g_wo_file.objects[1].half_x = PC_CITY_WALL_A1_HALF_X;
+        g_wo_file.objects[1].half_y = PC_CITY_WALL_A1_HALF_Y;
+        g_wo_file.objects[1].half_z = PC_CITY_WALL_A1_HALF_Z;
+        g_wo_file.objects[1].seed = PC_CITY_WALL_A1_SEED;
         g_wo_file.objects[1].has_carve = 1;
-        g_wo_file.objects[1].carve_x0 = PC_CITY_WALL_A_BLOCK_X0;
-        g_wo_file.objects[1].carve_x1 = PC_CITY_WALL_A_BLOCK_X1;
-        g_wo_file.objects[1].carve_y0 = PC_CITY_WALL_A_BLOCK_Y0;
-        g_wo_file.objects[1].carve_y1 = PC_CITY_WALL_A_BLOCK_Y1;
-        g_wo_file.objects[1].carve_z0 = PC_CITY_WALL_A_BLOCK_Z0;
-        g_wo_file.objects[1].carve_z1 = PC_CITY_WALL_A_BLOCK_Z1;
+        g_wo_file.objects[1].carve_x0 = PC_CITY_WALL_A1_BLOCK_X0;
+        g_wo_file.objects[1].carve_x1 = PC_CITY_WALL_A1_BLOCK_X1;
+        g_wo_file.objects[1].carve_y0 = PC_CITY_WALL_A1_BLOCK_Y0;
+        g_wo_file.objects[1].carve_y1 = PC_CITY_WALL_A1_BLOCK_Y1;
+        g_wo_file.objects[1].carve_z0 = PC_CITY_WALL_A1_BLOCK_Z0;
+        g_wo_file.objects[1].carve_z1 = PC_CITY_WALL_A1_BLOCK_Z1;
 
-        g_wo_file.objects[2].x = PC_CITY_WALL_B_X;
-        g_wo_file.objects[2].y = PC_CITY_WALL_B_Y;
-        g_wo_file.objects[2].z = PC_CITY_WALL_B_Z;
-        g_wo_file.objects[2].material = PC_CITY_WALL_B_MATERIAL;
-        g_wo_file.objects[2].half_x = PC_CITY_WALL_B_HALF_X;
-        g_wo_file.objects[2].half_y = PC_CITY_WALL_B_HALF_Y;
-        g_wo_file.objects[2].half_z = PC_CITY_WALL_B_HALF_Z;
-        g_wo_file.objects[2].seed = PC_CITY_WALL_B_SEED;
+        g_wo_file.objects[2].x = PC_CITY_WALL_A2_X;
+        g_wo_file.objects[2].y = PC_CITY_WALL_A2_Y;
+        g_wo_file.objects[2].z = PC_CITY_WALL_A2_Z;
+        g_wo_file.objects[2].material = PC_CITY_WALL_A2_MATERIAL;
+        g_wo_file.objects[2].half_x = PC_CITY_WALL_A2_HALF_X;
+        g_wo_file.objects[2].half_y = PC_CITY_WALL_A2_HALF_Y;
+        g_wo_file.objects[2].half_z = PC_CITY_WALL_A2_HALF_Z;
+        g_wo_file.objects[2].seed = PC_CITY_WALL_A2_SEED;
         g_wo_file.objects[2].has_carve = 1;
-        g_wo_file.objects[2].carve_x0 = PC_CITY_WALL_B_BLOCK_X0;
-        g_wo_file.objects[2].carve_x1 = PC_CITY_WALL_B_BLOCK_X1;
-        g_wo_file.objects[2].carve_y0 = PC_CITY_WALL_B_BLOCK_Y0;
-        g_wo_file.objects[2].carve_y1 = PC_CITY_WALL_B_BLOCK_Y1;
-        g_wo_file.objects[2].carve_z0 = PC_CITY_WALL_B_BLOCK_Z0;
-        g_wo_file.objects[2].carve_z1 = PC_CITY_WALL_B_BLOCK_Z1;
+        g_wo_file.objects[2].carve_x0 = PC_CITY_WALL_A2_BLOCK_X0;
+        g_wo_file.objects[2].carve_x1 = PC_CITY_WALL_A2_BLOCK_X1;
+        g_wo_file.objects[2].carve_y0 = PC_CITY_WALL_A2_BLOCK_Y0;
+        g_wo_file.objects[2].carve_y1 = PC_CITY_WALL_A2_BLOCK_Y1;
+        g_wo_file.objects[2].carve_z0 = PC_CITY_WALL_A2_BLOCK_Z0;
+        g_wo_file.objects[2].carve_z1 = PC_CITY_WALL_A2_BLOCK_Z1;
+
+        g_wo_file.objects[3].x = PC_CITY_WALL_B_X;
+        g_wo_file.objects[3].y = PC_CITY_WALL_B_Y;
+        g_wo_file.objects[3].z = PC_CITY_WALL_B_Z;
+        g_wo_file.objects[3].material = PC_CITY_WALL_B_MATERIAL;
+        g_wo_file.objects[3].half_x = PC_CITY_WALL_B_HALF_X;
+        g_wo_file.objects[3].half_y = PC_CITY_WALL_B_HALF_Y;
+        g_wo_file.objects[3].half_z = PC_CITY_WALL_B_HALF_Z;
+        g_wo_file.objects[3].seed = PC_CITY_WALL_B_SEED;
+        g_wo_file.objects[3].has_carve = 1;
+        g_wo_file.objects[3].carve_x0 = PC_CITY_WALL_B_BLOCK_X0;
+        g_wo_file.objects[3].carve_x1 = PC_CITY_WALL_B_BLOCK_X1;
+        g_wo_file.objects[3].carve_y0 = PC_CITY_WALL_B_BLOCK_Y0;
+        g_wo_file.objects[3].carve_y1 = PC_CITY_WALL_B_BLOCK_Y1;
+        g_wo_file.objects[3].carve_z0 = PC_CITY_WALL_B_BLOCK_Z0;
+        g_wo_file.objects[3].carve_z1 = PC_CITY_WALL_B_BLOCK_Z1;
 
         if (!pc_worldobjects_save(g_world_objects_path, &g_wo_file)) {
             fprintf(stderr, "WARNING: could not save the real default world-objects file to %s\n", g_world_objects_path);
         }
-        printf("No real world-objects file at %s -- seeded 3 real default objects (test prop + 2 carved-out city walls).\n", g_world_objects_path);
+        printf("No real world-objects file at %s -- seeded 4 real default objects (test prop + Wall A's real 2-box L-shape + Wall B).\n", g_world_objects_path);
     } else {
         printf("Real world-objects file loaded from %s (%d object(s)).\n", g_world_objects_path, g_wo_file.count);
     }
