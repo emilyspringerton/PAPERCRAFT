@@ -819,13 +819,37 @@ verified locally: a clean `bazel test --build_tests_only //...` no longer compil
 `apps/client/src/main.c` or `apps/server/src/main.c` at all (106 real actions vs. 152 before),
 while still running and passing all 12 real tests.
 
-New `release` job: needs all three real platform build jobs, runs only on a real push to `main`
-(never PRs, never its own tag-push), auto-bumps the MINOR version only (major stays a real, human,
-founder call, same split every other "core repo" in this monorepo follows), tars/zips each
-platform's own already-built artifact, and cuts a real GitHub Release with `gh release create`
-(no `--prerelease`) — reuses the exact three artifacts the build jobs already produced, no
-rebuild. This workflow's own next real push is the actual end-to-end proof (a real tag, a real
-release, real assets attached) — not yet observed as of this doc's own last edit.
+New `release` job: needs the platform build jobs, runs only on a real push to `main` (never PRs,
+never its own tag-push), auto-bumps the MINOR version only (major stays a real, human, founder
+call, same split every other "core repo" in this monorepo follows), tars/zips each platform's own
+already-built artifact, and cuts a real GitHub Release with `gh release create` (no
+`--prerelease`) — reuses the exact artifacts the build jobs already produced, no rebuild.
+
+**Final update: macOS dropped, founder call, real postmortem below.** The macOS job never got a
+single real GitHub Actions run to succeed — five straight failures, all at the same
+`papercraft_client` compile step, each fix attempt uncovering a real, distinct GitHub Actions
+gotcha without ever actually seeing the real compiler error text: (1) `sdl2-config` may not
+reliably be on `PATH` after `brew install sdl2` — switched to explicit `brew --prefix sdl2` paths,
+still failed; (2) a diagnostic wrapper reading `$SDL2_PREFIX` from a prior step's `$GITHUB_ENV`
+under `set -u` — if that cross-step propagation didn't work exactly as expected, `set -u`
+terminates a non-interactive shell immediately on the unbound reference, silently killing the
+wrapper's own error-reporting code before it could run; (3) resolving `$SDL2_PREFIX` fresh in the
+same step, dropping `set -u`, wrapping the whole sequence in `{ ... } > build.log 2>&1` — still
+zero new diagnostic output, because (4), the real, final root cause, found only after the founder
+pasted the actual raw step log: GitHub Actions invokes every `shell: bash` step as `bash
+--noprofile --norc -e -o pipefail {0}` — that `-e` is imposed at the OUTER shell invocation,
+outside any script's own control, and applies inside a `{ ... }` brace group exactly the same as
+at the top level, so the failing `clang` command inside the capture block killed the whole script
+immediately, before `cat build.log` or the `::error::` reporting loop ever ran. A `set +e` fix for
+that was written and pushed, but before its own next run completed, the founder made the real
+call: "ok i removed mac we cant fix it on our local we dont even know if that client works its not
+worth butning cycles on" — and pushed the `build_macos` job's removal directly (commit `91f5b8d`),
+which this doc's own author then followed up by closing out the dangling references that removal
+left behind (the `release` job's own `needs:` list, an orphaned "Download macOS artifact" step,
+and a `chmod` on files that job no longer produces). Real, honest final state: Linux + Windows
+only, both fully verified end-to-end on real GitHub Actions runners; macOS is not attempted. If
+this ever gets revisited, the `set +e` fix (the actual final diagnostic step, never confirmed
+against a real run) is the right starting point, not another blind guess.
 
 ## Explicitly not scoped yet
 

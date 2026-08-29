@@ -112,22 +112,21 @@ Place/inspect real world objects offline:
 ./bazel-bin/apps/mapeditor/mapeditor remove <index>
 ```
 
-## Prebuilt client + map editor (Linux / Windows / macOS)
+## Prebuilt client + map editor (Linux / Windows)
 
-`.github/workflows/ci.yml` builds `apps/client` and `apps/mapeditor` for all three real desktop
-platforms on every push, gated behind `bazel test //...` passing first, and cuts a real GitHub
-Release on every push to `main` (auto-bumped MINOR version, no `--prerelease` — a real release
-track, matching SHANKPIT's/PITVIPER's own "auto release non pre release" precedent) — grab
-`papercraft-linux-x86_64.tar.gz` / `papercraft-windows-x86_64.zip` / `papercraft-macos-x86_64.tar.gz`
-from the repo's own **Releases** page (each self-contained: the platform's own SDL2 runtime lib
-is bundled alongside the binaries, a `PLAY` launcher script/batch file included) instead of
-building from source. Only `apps/client`/`apps/mapeditor` ship this way — `apps/server` is
-Linux-only by design (it runs on this monorepo's own host, not a player's machine) and isn't part
-of this workflow. The macOS build is real (Homebrew SDL2, `-framework OpenGL`,
-`install_name_tool`-rewritten for a self-contained `.dylib`) but — like every other client-side
-change in this repo, see `NORTHSTAR.md`'s own Phase 1b/1c-client sections — its first real GitHub
-Actions run on a real macOS runner is the actual proof; this development environment has no macOS
-host to verify it against beforehand.
+`.github/workflows/ci.yml` builds `apps/client` and `apps/mapeditor` for Linux and Windows on
+every push, gated behind `bazel test //...` passing first, and cuts a real GitHub Release on
+every push to `main` (auto-bumped MINOR version, no `--prerelease` — a real release track,
+matching SHANKPIT's/PITVIPER's own "auto release non pre release" precedent) — grab
+`papercraft-linux-x86_64.tar.gz` / `papercraft-windows-x86_64.zip` from the repo's own
+**Releases** page (each self-contained: the platform's own SDL2 runtime lib is bundled alongside
+the binaries, a `PLAY` launcher script/batch file included) instead of building from source. Only
+`apps/client`/`apps/mapeditor` ship this way — `apps/server` is Linux-only by design (it runs on
+this monorepo's own host, not a player's machine) and isn't part of this workflow. A macOS build
+was attempted (Homebrew SDL2, `-framework OpenGL`) but dropped — five straight failed CI runs
+never got past the client compile step, this environment has no macOS host to debug it against
+locally, and founder call was it's not worth burning more cycles on an unverifiable target. See
+`NORTHSTAR.md`'s own cross-platform CI section for the full story if this ever gets revisited.
 
 Controls: WASD to move, Space to jump (hold Ctrl/Shift + tap Space for a real slide-jump boost),
 E to punch whatever's in reach, 1–5 to spend a talent point once you have one.

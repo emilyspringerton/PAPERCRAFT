@@ -3,18 +3,26 @@ name: PAPERCRAFT CI
 # Founder real-time, 2026-08-29: "make sure we have the proper clients uploading as artifacts" ->
 # "mac linux windows" -> "include the map editor" -> (after this workflow's own first real run
 # turned out to have a real bug, see the "test" job's own comment below) "still i dont have any
-# papercraft releases" -> "and ci is failing". Real, bounded scope: apps/client + apps/mapeditor
-# built and uploaded as CI artifacts, AND cut as a real GitHub Release, on all three real desktop
-# platforms. apps/server deliberately NOT included here -- it's POSIX-only by design
-# (packages/common/papercraft_persist.h's own doc comment: "the game server has no Windows branch
-# anywhere else in this codebase either"), runs on this monorepo's own Linux host, and isn't
-# something a player installs -- same real "server vs. distributed client" split SHANKPIT's own
-# release.yml already draws (Windows CLIENT + Linux SERVER only, no Windows server, no Mac
-# anything). Release automation matches SHANKPIT's/PITVIPER's own "auto release non pre release"
-# precedent (2026-08-21/25 founder real-time, cited in full in this workflow's own release job
-# below) literally: a real release, no `--prerelease` flag, auto-bumping MINOR only on every real
-# push to main -- major-version bumps stay a real, human, founder call, same split every other
-# "core repo" in this monorepo already follows.
+# papercraft releases" -> "and ci is failing" -> (after five straight failed macOS build attempts,
+# each fix uncovering a deeper real GitHub Actions gotcha -- sdl2-config PATH assumptions, `set -u`
+# silently killing a diagnostic wrapper before it could report anything, and finally GitHub's own
+# implicit `-e` on every `shell: bash` step swallowing the rest -- without ever actually seeing the
+# real compiler error text) "ok i removed mac we cant fix it on our local we dont even know if that
+# client works its not worth butning cycles on" -- founder made the real call to drop macOS
+# entirely and pushed that removal directly (commit 91f5b8d); this file closes out the dangling
+# `build_macos` references that removal left behind (the `release` job's own `needs:` list, an
+# orphaned "Download macOS artifact" step, and a `chmod` on files that job no longer produces).
+# Real, bounded scope now: apps/client + apps/mapeditor built and uploaded as CI artifacts, AND cut
+# as a real GitHub Release, on Linux + Windows. apps/server deliberately NOT included here -- it's
+# POSIX-only by design (packages/common/papercraft_persist.h's own doc comment: "the game server
+# has no Windows branch anywhere else in this codebase either"), runs on this monorepo's own Linux
+# host, and isn't something a player installs -- same real "server vs. distributed client" split
+# SHANKPIT's own release.yml already draws (Windows CLIENT + Linux SERVER only, no Windows server).
+# Release automation matches SHANKPIT's/PITVIPER's own "auto release non pre release" precedent
+# (2026-08-21/25 founder real-time, cited in full in this workflow's own release job below)
+# literally: a real release, no `--prerelease` flag, auto-bumping MINOR only on every real push to
+# main -- major-version bumps stay a real, human, founder call, same split every other "core repo"
+# in this monorepo already follows.
 
 on:
   push:
@@ -35,9 +43,9 @@ concurrency:
 jobs:
   # Real Bazel test gate, run once, on Linux only -- this repo's own actual build system
   # (BUILD.bazel everywhere) and actual test suite (bazel test //...), never exercised in CI
-  # before this workflow existed. The three platform build jobs below deliberately do NOT use
-  # Bazel themselves (no cross-compiling or macOS Bazel toolchain set up here, a real, separate,
-  # much bigger undertaking) -- they use raw compiler invocations mirroring each target's own
+  # before this workflow existed. The platform build jobs below deliberately do NOT use Bazel
+  # themselves (no cross-compiling Bazel toolchain set up here, a real, separate, much bigger
+  # undertaking) -- they use raw compiler invocations mirroring each target's own
   # BUILD.bazel srcs/deps/linkopts exactly, the same real pattern SHANKPIT's/PITVIPER's own CI
   # already uses for their own Windows cross-builds. This job is the one real place CI actually
   # proves the source tree is correct before any platform spends time packaging a binary from it.
@@ -202,12 +210,12 @@ jobs:
   # github" -> "pitviper is not pre release" / "pitviper is release release"). Auto-bumps the
   # MINOR version only on every real push to main (never PRs, never the tag-push this job's own
   # release step triggers) -- major-version bumps stay a real, human, founder call. A REAL release
-  # (no `--prerelease` flag), matching "non pre release" literally. Reuses the exact same three
+  # (no `--prerelease` flag), matching "non pre release" literally. Reuses the exact same two
   # real platform artifacts the jobs above already built rather than rebuilding anything.
   release:
     name: 🚀 Tag & Release
     runs-on: ubuntu-latest
-    needs: [build_linux, build_windows, build_macos]
+    needs: [build_linux, build_windows]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: write
@@ -231,17 +239,10 @@ jobs:
           name: papercraft-windows-${{ github.run_number }}-${{ github.sha }}
           path: dist/windows
 
-      - name: Download macOS artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: papercraft-macos-${{ github.run_number }}-${{ github.sha }}
-          path: dist/macos
-
       - name: Package release assets
         run: |
           set -euo pipefail
           chmod +x dist/linux/papercraft_client_linux dist/linux/mapeditor_linux dist/linux/PLAY.sh
-          chmod +x dist/macos/papercraft_client_macos dist/macos/mapeditor_macos dist/macos/PLAY.sh
           (cd dist/linux && tar -czf ../../papercraft-linux-x86_64.tar.gz .)
           (cd dist/windows && zip -r ../../papercraft-windows-x86_64.zip .)
 
