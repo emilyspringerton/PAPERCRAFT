@@ -1,3 +1,7 @@
+## 2026-08-29
+
+- Real interact damage falloff by distance: new PARENA mod (on-papercraft-interact-damage-falloff), composed with the existing material-resistance decision. Verified live -- the exact same 96-fragment PAPER object one-shot scenario (73/96 GONE before) now produces a real gradient (52 intact, 23 cracked, 11 torn, 10 gone), server log matching exactly. bazel build/test //... clean (19 targets, 8/8 mod tests). Commit ab65d43. (sess-20260825-1938-f6bd411e)
+
 ## 2026-08-28
 - Real non-cube base shapes: paper_generate_box takes independent per-axis half-extents, apps/mapeditor grew --half-x/--half-y/--half-z. Verified live -- placed a real wall (half=3.0,1.5,0.15), confirmed server broadcast the exact shape, confirmed interact/damage still works on the asymmetric object, screenshot showed a genuinely wide/short slab, not a cube. bazel build/test //... clean (17 targets, 7/7 mod tests). Commit b5cb431. (sess-20260825-1938-f6bd411e)
 - Real client-side fragment debris on destruction: diffs consecutive snapshots for real GONE transitions, spawns a debris piece using the fragment's own real jittered geometry, real gravity + fade. Verified server-side (73 fragments broke off in one hit); screenshot verification of debris-in-flight was attempted but honestly noted as incomplete (small/fast pieces, no xdotool available). Bonus: confirmed real 2-player simultaneous rendering for the first time this session. bazel build/test //... clean. Commit 283b775. (sess-20260825-1938-f6bd411e)
