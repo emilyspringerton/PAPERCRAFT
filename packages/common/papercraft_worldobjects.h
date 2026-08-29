@@ -33,6 +33,10 @@
  * own real per-fragment-state wire slot a fixed, known size (PC_WO_FRAGMENTS), so
  * PcSnapshotPacket can embed a real, bounded, fixed-size array of them. Variable per-object
  * subdivision is real, later work, not needed for this proof point.
+ *
+ * Real round-trip + real failure-mode (missing file, wrong magic) coverage for both real on-disk
+ * formats this file defines (PcWorldObjectFile, PcWorldDamageFile):
+ * papercraft_worldobjects_test.c (`bazel test //packages/common:papercraft_worldobjects_test`).
  */
 
 #define PC_WO_MAX_OBJECTS 4      /* real, small, bounded cap -- keeps every object's own real

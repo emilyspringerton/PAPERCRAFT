@@ -27,3 +27,25 @@ cc_test(
     name = "hmac_sha256_test",
     srcs = ["hmac_sha256_test.c", "hmac_sha256.h"],
 )
+
+# papercraft_persist_test -- real round-trip + real failure-mode (missing file, wrong magic)
+# coverage for papercraft_persist.h's own real player-progression save/load pair. Depends on
+# :common_headers rather than listing every transitively-included header directly (unlike
+# hmac_sha256_test above, papercraft_persist.h itself #includes papercraft_protocol.h, which in
+# turn #includes papercraft_worldobjects.h -- the real, existing header-only bag already declares
+# all of them as real Bazel inputs).
+cc_test(
+    name = "papercraft_persist_test",
+    srcs = ["papercraft_persist_test.c"],
+    deps = [":common_headers"],
+)
+
+# papercraft_worldobjects_test -- same real round-trip + real failure-mode coverage, for
+# papercraft_worldobjects.h's own two real on-disk formats: PcWorldObjectFile (apps/mapeditor's
+# own real map data) and PcWorldDamageFile (apps/server's own real per-fragment damage
+# persistence).
+cc_test(
+    name = "papercraft_worldobjects_test",
+    srcs = ["papercraft_worldobjects_test.c"],
+    deps = [":common_headers"],
+)

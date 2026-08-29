@@ -25,6 +25,9 @@
  * POSIX-only (mkdir/fopen), matching apps/server's own real scope -- the game server has no
  * Windows branch anywhere else in this codebase either, unlike apps/client's own cross-platform
  * http_client.h.
+ *
+ * Real round-trip + real failure-mode (missing file, wrong magic) coverage:
+ * papercraft_persist_test.c (`bazel test //packages/common:papercraft_persist_test`).
  */
 
 #define PC_SAVE_MAGIC 0x50435331u /* "PCS1", a real version tag -- a future save-format change
