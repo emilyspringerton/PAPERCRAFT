@@ -377,6 +377,24 @@ int main(int argc, char **argv) {
                PW_GRID_CHUNKS, total_blocks, PW_GRID_RADIUS, PW_GRID_RADIUS);
     }
 
+    /* Real first case of "real integration into the city's own actual VoxelBlock geometry"
+       (PC_CITY_WALL_A_*, packages/common/papercraft_protocol.h) -- carve the real wall
+       structure's own 15 real blocks out of chunk (0,0)'s normal solid render/ground-collision
+       path, so a real Paper Engine object (spawned below) can take its place instead. Scoped to
+       chunk (0,0) only -- see PC_CITY_WALL_A_*'s own doc comment for the full real rationale. */
+    {
+        int origin_idx = pw_world_index(0, 0);
+        if (origin_idx >= 0 && g_world.loaded[origin_idx]) {
+            int before = g_world.chunks[origin_idx].block_count;
+            pw_chunk_remove_box(&g_world.chunks[origin_idx],
+                                 PC_CITY_WALL_A_BLOCK_X0, PC_CITY_WALL_A_BLOCK_X1,
+                                 PC_CITY_WALL_A_BLOCK_Y0, PC_CITY_WALL_A_BLOCK_Y1,
+                                 PC_CITY_WALL_A_BLOCK_Z0, PC_CITY_WALL_A_BLOCK_Z1);
+            int removed = before - g_world.chunks[origin_idx].block_count;
+            printf("Real city-wall carve-out: removed %d real block(s) from chunk (0,0) -- a real Paper Engine object replaces them.\n", removed);
+        }
+    }
+
     /* Real, persisted world objects (packages/common/papercraft_worldobjects.h) -- graduates the
        original hardcoded single test cube (docs/NORTHSTAR_PAPER_ENGINE.md's own "What's
        explicitly not built yet" -- closing the "no hit-detection wiring" gap) into real,
@@ -401,10 +419,25 @@ int main(int argc, char **argv) {
         } else {
             g_wo_file.objects[0].y = PC_DEFAULT_OBJECT_HALF_EXTENT;
         }
+
+        /* Real second default object -- the real, carved-out city wall (PC_CITY_WALL_A_*),
+           standing in exactly where its own real 15 VoxelBlocks used to be. Its own real
+           position/extents are already derived directly from that real block data (see the
+           constant's own doc comment), not ground-snapped like a normal editor placement. */
+        g_wo_file.count = 2;
+        g_wo_file.objects[1].x = PC_CITY_WALL_A_X;
+        g_wo_file.objects[1].y = PC_CITY_WALL_A_Y;
+        g_wo_file.objects[1].z = PC_CITY_WALL_A_Z;
+        g_wo_file.objects[1].material = PC_CITY_WALL_A_MATERIAL;
+        g_wo_file.objects[1].half_x = PC_CITY_WALL_A_HALF_X;
+        g_wo_file.objects[1].half_y = PC_CITY_WALL_A_HALF_Y;
+        g_wo_file.objects[1].half_z = PC_CITY_WALL_A_HALF_Z;
+        g_wo_file.objects[1].seed = PC_CITY_WALL_A_SEED;
+
         if (!pc_worldobjects_save(g_world_objects_path, &g_wo_file)) {
             fprintf(stderr, "WARNING: could not save the real default world-objects file to %s\n", g_world_objects_path);
         }
-        printf("No real world-objects file at %s -- seeded a real default object.\n", g_world_objects_path);
+        printf("No real world-objects file at %s -- seeded 2 real default objects (test prop + carved-out city wall).\n", g_world_objects_path);
     } else {
         printf("Real world-objects file loaded from %s (%d object(s)).\n", g_world_objects_path, g_wo_file.count);
     }

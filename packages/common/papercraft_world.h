@@ -83,6 +83,27 @@ static inline int pw_ground_height_at(const PwChunk *chunk, int local_x, int loc
     return 1;
 }
 
+/* pw_chunk_remove_box: real, in-place removal of every block whose local (x,y,z) falls inside
+ * the given real, inclusive box (x0..x1, y0..y1, z0..z1) -- compacts the chunk's own block array
+ * (swap-with-last, since block order doesn't matter to any real consumer: rendering iterates the
+ * whole array, ground-height lookup scans it unordered). Closes NORTHSTAR.md's own "real
+ * integration into the city's own actual VoxelBlock geometry" gap for a real, bounded first case:
+ * carving a real, already-solid city structure out of the normal rendered/ground-collision block
+ * list so a real Paper Engine destructible object can take its place instead (see
+ * PC_CITY_WALL_A_* in packages/common/papercraft_protocol.h) -- not a general "any VoxelBlock
+ * region can become destructible" system, that's real, later, bigger work. */
+static inline void pw_chunk_remove_box(PwChunk *chunk, int x0, int x1, int y0, int y1, int z0, int z1) {
+    for (int i = 0; i < chunk->block_count; ) {
+        PwBlock *b = &chunk->blocks[i];
+        if (b->x >= x0 && b->x <= x1 && b->y >= y0 && b->y <= y1 && b->z >= z0 && b->z <= z1) {
+            chunk->blocks[i] = chunk->blocks[chunk->block_count - 1];
+            chunk->block_count--;
+        } else {
+            i++;
+        }
+    }
+}
+
 /* PwWorld -- real Phase 2 multi-chunk grid ("Explicitly not Phase 0: multiple chunks/real city
  * traversal beyond one (cx=0,cz=0) chunk" -- NORTHSTAR.md, now real). A fixed, real
  * PW_GRID_DIM x PW_GRID_DIM grid of chunks loaded once at startup around the spawn chunk

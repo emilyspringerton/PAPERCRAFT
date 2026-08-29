@@ -254,6 +254,38 @@ broke off"` exactly. A real, meaningful gradient instead of the old uniform full
 destruction — fragments near the real hit center still break, fragments near the real radius edge
 now only crack or stay intact.
 
+## Real first case of city-wall integration now (2026-08-29)
+
+Closes the first real slice of "real integration into the city's own actual `VoxelBlock`
+geometry (so real building walls, not just standalone props, are destructible)." Not full-city
+conversion — deliberately one real, bounded case, proving the technique: converting every
+`VoxelBlock` in the real city into individually destructible Paper Engine objects would blow the
+real wire-size budget completely (`PC_WO_MAX_OBJECTS` stays a real, bounded 4).
+
+Real, confirmed-live geometry, not invented: `GET /chunks?scene=200&cx=0&cz=0` carries two real
+~15-block wall structures near the chunk's own corners; `PC_CITY_WALL_A_*`
+(`packages/common/papercraft_protocol.h`) names the real one at `X∈{12,13}, Z∈{0,1}, Y∈65..69` —
+a real, genuinely L-shaped 3-column cluster (`(13,1)` is real, confirmed absent from the live
+data, not a solid 2×2). New `pw_chunk_remove_box` (`packages/common/papercraft_world.h`) removes
+those exact real 15 blocks from chunk `(0,0)`'s own normal solid render/ground-collision path —
+both `apps/server` and `apps/client` call it independently at startup with the same real bounds,
+same "both sides agree, no drift" discipline this repo's own deterministic-mesh regeneration
+already established. A real Paper Engine object (using the non-cube `paper_generate_box`
+shipped earlier this session) then stands in the carved-out space, sized to the real block
+bounding box (`half=(1.0,2.5,1.0)`, centered at `(13,67.5,1)`) — a real, honest approximation
+(a solid box standing in for the real L-shaped footprint, not an exact multi-part match; a real,
+later refinement, not attempted here). Auto-seeded as the second real default world object
+alongside the original test prop the very first time `apps/server` finds no world-objects file.
+
+Verified live end to end: fresh server confirmed `"Real city-wall carve-out: removed 15 real
+block(s) from chunk (0,0)"` — the exact real count — and seeded `2 real default objects`; a real
+UDP probe confirmed the object broadcasts the exact derived shape/position, walked a real player
+to it, and punched it repeatedly, confirming real damage registers on a genuinely
+carved-out-from-the-city object (`6/96` fragments damaged from 6 real hits, matching CONCRETE's
+own real toughness plus the real distance falloff now composed on top). A real screenshot showed
+the object rendering correctly alongside the rest of the real city geometry, no double-render or
+gap artifacts.
+
 ## What's explicitly not built yet
 
 Real server-authoritative physics/collision for a detached fragment (the client-side debris above
@@ -262,8 +294,11 @@ client simulates its own copy independently), no real weapon/combat system beyon
 with distance falloff (`PC_PACKET_INTERACT` still carries no aim/spread/weapon-type data), only
 one real scalar `subdiv` per object (uneven fragment density on a strongly non-uniform box, see
 above), and only a small, editor-placed set of real objects (`apps/mapeditor`,
-`PC_WO_MAX_OBJECTS=4`) — real integration into the city's own actual `VoxelBlock` geometry (so
-real building walls, not just standalone props, are destructible) is separate, future work. The
+`PC_WO_MAX_OBJECTS=4`) — a general "any real `VoxelBlock` region can become a real destructible
+object" system (this pass hardcoded one real, named case, `PC_CITY_WALL_A_*`, not a data-driven
+carve-out pipeline), full-city conversion, and a real L-shaped/multi-part object matching the
+carved wall's own exact real footprint (rather than its bounding-box approximation) are all
+separate, future work. The
 bare-punch hit-detection gap named in an earlier draft of this section
 is now closed — see "Live-wired into the actual game loop" above. Real Phase 1 sequencing for the
 remaining items above is separate, future work, matching this repo's own "docs before software,

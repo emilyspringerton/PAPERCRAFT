@@ -148,6 +148,41 @@ typedef struct {
 #define PC_DEFAULT_OBJECT_X 12.0f
 #define PC_DEFAULT_OBJECT_Z 8.0f
 
+/* PC_CITY_WALL_A_*: the real, first case of NORTHSTAR.md's own "real integration into the city's
+ * own actual VoxelBlock geometry" gap -- one of the two real ~15-block wall structures GFD's own
+ * worldapi urbanChunk generator already builds into scene 200's chunk (0,0), confirmed live this
+ * session (GET /chunks?scene=200&cx=0&cz=0 -> real blocks at X in {12,13}, Z in {0,1}, Y in
+ * 65..69, an L-shaped 3-column cluster, not a solid 2x2 -- (13,1) is real, genuinely NOT present
+ * in the real data). apps/server/apps/client both call pw_chunk_remove_box with these real
+ * bounds on chunk (0,0) at startup (removing the wall's own 15 real blocks from the normal solid
+ * render/ground-collision path), then spawn a real Paper Engine object approximating that wall's
+ * own real bounding box in its place -- a real, honest approximation (a solid box, not the exact
+ * L-shaped footprint; a real, later refinement would need a multi-part or L-shaped object, not
+ * attempted here). Deliberately ONE real wall, not full-city conversion -- PC_WO_MAX_OBJECTS
+ * stays a real, bounded 4, and converting every VoxelBlock in the whole real city into
+ * individually destructible Paper Engine objects would blow that wire budget completely; this is
+ * the real, smallest proof that city geometry CAN be carved out and replaced, not the final
+ * pipeline. Scoped to chunk (0,0) only, even though the real 3x3 grid's other 8 chunks currently
+ * carry byte-identical repeated content (PwWorld's own doc comment) -- carving all 9 copies out
+ * would be real, later, straightforward-but-unnecessary work for this proof point. */
+#define PC_CITY_WALL_A_BLOCK_X0 12
+#define PC_CITY_WALL_A_BLOCK_X1 13
+#define PC_CITY_WALL_A_BLOCK_Z0 0
+#define PC_CITY_WALL_A_BLOCK_Z1 1
+#define PC_CITY_WALL_A_BLOCK_Y0 65
+#define PC_CITY_WALL_A_BLOCK_Y1 69
+/* Real object placement derived directly from the real block bounds above (world X in [12,14),
+   Z in [0,2), Y in [65,70) -- chunk (0,0)'s own origin is world (0,0), so chunk-local and world
+   coordinates are identical here). */
+#define PC_CITY_WALL_A_MATERIAL    2 /* PAPER_MATERIAL_CONCRETE -- matches the real city's own concrete blocks */
+#define PC_CITY_WALL_A_SEED        20260829u
+#define PC_CITY_WALL_A_X 13.0f
+#define PC_CITY_WALL_A_Y 67.5f
+#define PC_CITY_WALL_A_Z 1.0f
+#define PC_CITY_WALL_A_HALF_X 1.0f
+#define PC_CITY_WALL_A_HALF_Y 2.5f
+#define PC_CITY_WALL_A_HALF_Z 1.0f
+
 /* Real, bounded, multi-object broadcast (packages/common/papercraft_worldobjects.h) -- up to
  * PC_WO_MAX_OBJECTS real Paper Engine props, each with its own real editor-placed position/
  * material/seed (world_objects[]) and per-fragment damage state (world_object_state[][]).

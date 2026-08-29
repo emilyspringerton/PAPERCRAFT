@@ -533,6 +533,20 @@ int main(int argc, char **argv) {
         printf("Real city chunk grid loaded (%d chunks, %d total blocks).\n", PW_GRID_CHUNKS, total_blocks);
     }
 
+    /* Real city-wall carve-out (PC_CITY_WALL_A_*, packages/common/papercraft_protocol.h) -- the
+       client independently removes the exact same real 15 blocks from chunk (0,0) the server
+       does, so draw_city_world doesn't double-render solid geometry underneath the real
+       server-broadcast Paper Engine object that now stands there instead. */
+    {
+        int origin_idx = pw_world_index(0, 0);
+        if (origin_idx >= 0 && g_world.loaded[origin_idx]) {
+            pw_chunk_remove_box(&g_world.chunks[origin_idx],
+                                 PC_CITY_WALL_A_BLOCK_X0, PC_CITY_WALL_A_BLOCK_X1,
+                                 PC_CITY_WALL_A_BLOCK_Y0, PC_CITY_WALL_A_BLOCK_Y1,
+                                 PC_CITY_WALL_A_BLOCK_Z0, PC_CITY_WALL_A_BLOCK_Z1);
+        }
+    }
+
     /* Real, editor-authored world objects (packages/common/papercraft_worldobjects.h) --
        replaces the old hardcoded single test cube. Unlike the old compile-time PC_TEST_CUBE_*
        constants, real object placement is now dynamic, server-broadcast data (apps/mapeditor),
