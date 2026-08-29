@@ -16,9 +16,11 @@
  *
  * Deliberately not SQLite/a database: this repo's own Bazel build has no libsqlite3 dependency
  * wired in yet, and one small fixed-size struct per player is the real "smallest real proof of
- * the technique" for restart-survival, not a full save-game system -- no world/test-cube-damage
- * persistence yet (that's real, later work, same discipline this session's own destructible-prop
- * and multi-chunk work already used: prove the smallest real slice first).
+ * the technique" for restart-survival, not a full save-game system. World-object damage
+ * persistence is real and shipped too, since -- a real, separate, per-fragment-hp counterpart to
+ * this file's own per-player record, not this file's own concern: see
+ * packages/common/papercraft_worldobjects.h's own `PcWorldDamageFile` (this file predates that
+ * one, kept prove-the-smallest-slice-first, player state before world state).
  *
  * POSIX-only (mkdir/fopen), matching apps/server's own real scope -- the game server has no
  * Windows branch anywhere else in this codebase either, unlike apps/client's own cross-platform

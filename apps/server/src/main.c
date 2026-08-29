@@ -1,15 +1,24 @@
-/* PAPERCRAFT -- real Phase 0 server (NORTHSTAR.md's own "Real Phase 0" section: "a player can
- * log in and spawn in the real persistent city, nothing else").
+/* PAPERCRAFT -- real game server, grown well past its own original "real Phase 0" scope
+ * (NORTHSTAR.md's own "Real Phase 0" section: "a player can log in and spawn in the real
+ * persistent city, nothing else" -- accurate for this file's very first version, not its current
+ * one; kept here as the real starting point, not corrected away).
  *
  * A real, single-node, always-running UDP server -- no matches, no per-match instances
  * ("papercraft shouldnt have matches and the matches shouldnt end"). Fetches the real, live
- * GoblinFoxDragon worldapi urban chunk (scene 200) once at startup via
- * packages/common/papercraft_world.h, verifies a real HMAC connect-ticket (minted by IDUNA's
- * PapercraftTicketHandler from a real POST /api/v1/auth/email/login) on every CONNECT -- fails
- * closed, same discipline WEAKNIGHT_BEDROCK_RACERS' own apps/server already established -- and
- * ticks real, server-authoritative on-foot movement with basic ground collision derived from the
- * real block data (no jump/fall physics yet, no destruction wiring, no talent spending -- see
- * NORTHSTAR.md's own explicit Phase 0 scope).
+ * GoblinFoxDragon worldapi urban chunk grid (scene 200, a real static multi-chunk grid --
+ * packages/common/papercraft_world.h's own `PwWorld`) once at startup, verifies a real HMAC
+ * connect-ticket (minted by IDUNA's PapercraftTicketHandler from a real
+ * POST /api/v1/auth/email/login) on every CONNECT -- fails closed, same discipline
+ * WEAKNIGHT_BEDROCK_RACERS' own apps/server already established -- and ticks real,
+ * server-authoritative on-foot movement with real jump/gravity physics and a real slide-jump
+ * trick, real Paper Engine destruction (`PC_PACKET_INTERACT`, real PARENA-decided damage/reward),
+ * real talent-point spending (`PC_PACKET_ALLOCATE_TALENT`, real PARENA-decided gate), real
+ * leveling/XP, real restart-persistence for both player progression and world-object damage, and
+ * an optional real dynamically-loaded mod registry (`--mods-manifest`, live-reloadable via
+ * `SIGHUP`) — see `MODDING.md`/`NORTHSTAR.md` for the full real, current feature list; this
+ * header intentionally doesn't re-enumerate what's since shipped, to avoid going stale again the
+ * same way its own original "no jump/fall physics yet, no destruction wiring, no talent spending"
+ * line did.
  */
 
 #include <stdio.h>

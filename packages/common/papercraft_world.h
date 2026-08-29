@@ -4,18 +4,23 @@
 #include <stdio.h>
 #include <string.h>
 
-/* papercraft_world.h -- real Phase 0 world data: fetches the real, live GoblinFoxDragon
- * worldapi urban chunk (scene 200, "TRAPX city districts" -- see NORTHSTAR.md's own "Real Phase
- * 0" section for the full citation and the real, confirmed reason this is the right terrain
- * source, not SHANKPIT_CONSTRUCT.txt's own hardcoded client-local SCENE_CITY), parses its real
- * `GET /chunks?scene=200&cx=0&cz=0` JSON block array, and answers real "what's the ground height
- * at this column" queries a spawn/collision system needs.
+/* papercraft_world.h -- real world data: fetches the real, live GoblinFoxDragon worldapi urban
+ * chunk grid (scene 200, "TRAPX city districts" -- see NORTHSTAR.md's own "Real Phase 0" section
+ * for the full citation and the real, confirmed reason this is the right terrain source, not
+ * SHANKPIT_CONSTRUCT.txt's own hardcoded client-local SCENE_CITY), parses each real
+ * `GET /chunks?scene=200&cx=<cx>&cz=<cz>` JSON block array, and answers real "what's the ground
+ * height at this column" queries a spawn/collision system needs. Two real layers: `PwChunk`
+ * (one real chunk's own real block array, populated via `pw_parse_chunks_json` below from a
+ * caller's own `http_get_json` fetch) and `PwWorld` (a real, static
+ * `PW_GRID_DIM` x `PW_GRID_DIM` grid of `PwChunk`s, see its own doc comment further down) --
+ * `apps/server`/`apps/client` both use `PwWorld` today, not a single bare `PwChunk`.
  *
  * Confirmed live this session: that endpoint returns a real 1054-block VoxelBlock{X,Y,Z,BlockID}
- * array for chunk (0,0) -- a solid 16x16x4 ground slab (Y 61-64) plus two small wall structures
- * near the chunk's own corners (Y 65-69). One real chunk only, Phase 0's own explicit scope
- * (matching WEAKNIGHT_BEDROCK_RACERS' own "one chunk for now" Phase 0 bar) -- multi-chunk
- * streaming is real, later work.
+ * array per chunk -- a solid 16x16x4 ground slab (Y 61-64) plus two small wall structures near
+ * chunk (0,0)'s own corners (Y 65-69). `PwWorld`'s own real, static multi-chunk grid closes the
+ * "one chunk only" gap this file's very first version had -- what's still real, later work is
+ * *dynamic* streaming (loading/unloading chunks as the player roams, instead of one real fixed
+ * grid loaded once at startup); see `PwWorld`'s own doc comment for the full real detail.
  */
 
 #define PW_MAX_BLOCKS 4096 /* real, bounded capacity -- comfortably above the real 1054-block chunk this endpoint returns today */
