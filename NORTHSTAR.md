@@ -592,6 +592,57 @@ sequencing discipline
 `WEAKNIGHT_BEDROCK_RACERS` already used (its own Phase 0 shipped a single vehicle on one chunk
 before Phase 1 added a second vehicle or destruction).
 
+## Real Phase 1 — scoping the next deliberate slice (2026-08-29)
+
+Real, honest retrospective first: Phase 0's own stated bar ("a player can log in and spawn in the
+real persistent city, nothing else") was exceeded long ago by real, shipped work this doc's own
+session-by-session log already documents in full — real jump/slide-jump physics, a real talent
+tree with a real UI, real Paper Engine destruction with two real precise-L-shape carved walls, a
+real, verified modding pipeline including real dynamic mod loading, real restart-persistence for
+both players and world damage, real abandoned-connection handling, and a real, measured wire-
+budget optimization that directly enabled doubling `PC_WO_MAX_OBJECTS`. This doc has referenced "a
+Phase 1" implicitly (see "Explicitly not scoped yet" below, and the `WEAKNIGHT_BEDROCK_RACERS`
+sequencing citation above) without ever formally scoping what it actually is — real, honest gap,
+closed here, matching this repo's own "docs before software" discipline and the same real
+Definition-of-Done precedent `PARENA`'s own VS0 already set (`PARENA/NORTHSTAR.md`).
+
+**Real Phase 1 target, chosen deliberately: server-authoritative fragment physics — the smallest
+real first slice, not the whole system.** Of the remaining real, named gaps (embedded PARENA
+editor, real weapon/combat, full-city conversion, fragment physics), this one is picked first
+because it's the most real, mechanically well-defined engineering problem among them — the other
+three each need either founder-level product direction (the embedded editor, real weapon/combat
+balance) or a much larger wire-streaming redesign (full-city conversion) before a real slice can
+even be scoped; fragment physics needs neither, just real, careful engineering, the same kind this
+repo has already done for jump physics and the Paper Engine itself.
+
+Real, deliberately narrow Definition of Done for Phase 1a (not the full system — matching this
+repo's own "smallest real proof point first" discipline used for every increment so far):
+
+- When a real Paper Engine fragment transitions to `PAPER_STATE_GONE` (server-side, the existing
+  real trigger — `paper_mesh_damage_radius`'s own return), the server tracks it as one real,
+  bounded "falling fragment" (a real, small, fixed-capacity array, same shape `PlayerSlot`/
+  `PcWorldObjectDef` already use — NOT one per fragment ever detached, a real, bounded recent-N
+  cap, oldest evicted first, matching `PC_MAX_PLAYERS`/`PC_WO_MAX_OBJECTS`'s own real "small,
+  bounded cap" precedent).
+- Real server-side integration: vertical position only (Y), real gravity (`PC_GRAVITY`, already
+  defined for player jump physics — reused, not reinvented), no lateral scatter, no rotation, no
+  collision with players or other fragments. The real, existing `pw_world_ground_height_at` (same
+  function player movement already uses) detects a real "landed" condition; once landed, the
+  fragment stops updating and its own real slot frees for reuse.
+- Real wire cost: a new, small, bounded array in `PcSnapshotPacket` (position + a "landed" flag per
+  active falling fragment) — real, measured `sizeof(PcSnapshotPacket)` accounting required before
+  shipping, same discipline this doc's own Paper Engine sections already established, using the
+  real headroom S206-43/44 already created.
+- Real, honest non-goals for Phase 1a, explicitly not attempted: lateral scatter/tumbling
+  (rotation), collision with players or other fragments, and client-side prediction of the real
+  server-authoritative fall (the client keeps rendering its own real cosmetic debris in the
+  meantime, replaced by the real server-authoritative version only once this slice ships) — all
+  real, separate, later Phase 1b+ work, not invented or promised here.
+
+Not scoped here: Phase 1's own remaining items (weapon/combat, the embedded editor, full-city
+conversion) stay real, later, deliberately unscoped until each gets its own real founder-direction
+or design pass — this section names ONE real, concrete next slice, not a full Phase 1 backlog.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled
