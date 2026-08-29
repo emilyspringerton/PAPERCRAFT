@@ -61,6 +61,19 @@ That's it — no exotic dependencies, just `gcc` via the repo's own `Makefile`. 
 #        parena ci-status <owner/repo> <sha>
 ```
 
+Or, from this repo's own root, `scripts/build-parena.sh` does exactly the above one command at a
+time — finds a sibling `../PARENA` checkout (or `PARENA_DIR` if you've cloned it somewhere else),
+runs the real `make build`, and prints the resolved binary path:
+
+```bash
+PARENA_BIN="$(scripts/build-parena.sh)"
+"$PARENA_BIN"   # same real usage output as above
+```
+
+It fails with a real, actionable error (not a bare `cd: no such file or directory`) if PARENA
+isn't checked out where expected. Still no vendored/prebuilt binary shipped inside this repo —
+see "Two repos, not one" below for why that's a deliberate choice, not an oversight.
+
 ## Step 2 — write a real mod
 
 This doc's own real worked example: a mod that rewards a player with bonus XP for fully
@@ -304,9 +317,19 @@ asserts, not approximately.
   touching a second repo's own CLI. PARENA's own standalone editor is real and shipping
   independently (`PARENA/docs/NORTHSTAR_LINNEN.md`) — embedding it inside PAPERCRAFT is named as
   the real direction, not scoped into a build plan yet.
-- **Two repos, not one.** A modder needs both `PAPERCRAFT` and `PARENA` checked out and PARENA's
-  own compiler built locally — there's no vendored/prebuilt `parena` binary shipped inside
-  PAPERCRAFT itself.
+- **Two repos, not one.** A modder still needs both `PAPERCRAFT` and `PARENA` checked out —
+  there's no vendored/prebuilt `parena` binary shipped inside PAPERCRAFT itself, and that's a
+  deliberate choice, not an oversight: a committed, platform-specific compiler binary is real,
+  ongoing maintenance debt this monorepo's own "generated code committed" precedent (source, not
+  binaries) doesn't extend to. What IS now real (2026-08-29): `scripts/build-parena.sh` closes the
+  *friction*, if not the two-repo fact itself — one real command from this repo's own root finds a
+  sibling `../PARENA` checkout (or `PARENA_DIR` if cloned elsewhere), runs the real `make build`,
+  and prints the resolved binary path, instead of a modder needing to know to `cd` into a second
+  repo by hand. Verified live, all three real paths: a real sibling checkout builds and prints a
+  working `./parena` binary; a missing `PARENA_DIR` fails with a real, actionable clone
+  instruction instead of a bare `cd: no such file or directory`; a `PARENA_DIR` that exists but
+  isn't a real PARENA checkout (no `Makefile`) fails with its own distinct real error rather than
+  a confusing `make` failure deeper in.
 - **No live-server reload.** A new/changed mod requires stopping and restarting the server
   (matching `apps/mapeditor`'s own same real limitation — world-object edits also need a
   restart to take effect).
