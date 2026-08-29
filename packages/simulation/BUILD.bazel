@@ -9,6 +9,11 @@ cc_library(
     name = "level",
     srcs = ["level_mod.c"],
     hdrs = ["parena_runtime.h"],
+    # alwayslink: real, standard Bazel fix so this library's own real symbols
+    # (xp_required_for_level, on_papercraft_level_for_xp) survive into :liblevel_mod.so below --
+    # same real reason and same real no-op-for-apps/server tradeoff documented on :xp_award's own
+    # alwayslink, not repeated in full here.
+    alwayslink = True,
     visibility = ["//visibility:public"],
 )
 
@@ -16,6 +21,19 @@ cc_test(
     name = "level_mod_test",
     srcs = ["level_mod_test.c"],
     deps = [":level"],
+)
+
+# liblevel_mod.so -- the EXACT same real, unmodified generated C as :level above, built as a real
+# shared library for apps/dynmod_poc's own dlopen/dlsym proof of concept -- real, second-shape
+# evidence (a real 1-arg and a real 2-arg I32 function, not just :libxp_award_mod.so's own
+# trivial 0-arg case) that the real dynamic-loading mechanism generalizes across the real
+# function shapes this repo's own mods actually use.
+cc_binary(
+    name = "liblevel_mod.so",
+    deps = [":level"],
+    linkshared = True,
+    linkopts = ["-Wl,--export-dynamic"],
+    visibility = ["//visibility:public"],
 )
 
 # paper_fragment -- the real, PARENA-compiled Paper Engine damage-decision logic
