@@ -127,6 +127,13 @@ jobs:
           chmod +x PAPERCRAFT_Linux/papercraft_client_linux PAPERCRAFT_Linux/mapeditor_linux
           printf '%s\n' "#!/usr/bin/env bash" "exec \"\$(dirname \"\$0\")/papercraft_client_linux\" \"\$@\"" > PAPERCRAFT_Linux/PLAY.sh
           chmod +x PAPERCRAFT_Linux/PLAY.sh
+          # Real, live gap this closes (2026-08-29) -- same real reasoning as PLAY_ONLINE.bat in
+          # the Windows bundle above: PLAY.sh's own bare launch defaults every host flag to
+          # "localhost", the player's own machine, not this monorepo's own box.
+          printf '%s\n' "#!/usr/bin/env bash" \
+            "exec \"\$(dirname \"\$0\")/papercraft_client_linux\" --worldapi-host okemily.com --worldapi-port 7070 --server-host okemily.com --server-port 7799 --iduna-host okemily.com --iduna-port 8080 \"\$@\"" \
+            > PAPERCRAFT_Linux/PLAY_ONLINE.sh
+          chmod +x PAPERCRAFT_Linux/PLAY_ONLINE.sh
 
       - name: Upload Linux Artifact
         uses: actions/upload-artifact@v4
@@ -185,6 +192,19 @@ jobs:
             -lws2_32 -lm
           echo "Build OK: $(ls -lh mapeditor.exe)"
 
+      # Real, live gap found and fixed (2026-08-29, founder real-time: "ok i need a PlayOnline bat
+      # on windows or something to connect to the upstream server im not gonna try to do it on
+      # cli in windows right now"): apps/client defaults every host flag to "localhost", which is
+      # the PLAYER's own machine when running a downloaded release binary, not this monorepo's own
+      # box -- PLAY.bat's bare `start papercraft_client.exe` (no host flags) makes a mandatory,
+      # blocking worldapi fetch fail before the SDL window ever opens, printing a FATAL error and
+      # exiting immediately (a console flash-and-close on a double-click launch, no visible error
+      # dialog). PLAY_ONLINE.bat bakes in the real public host flags so a player can just
+      # double-click it -- `okemily.com` (a real, existing plain A record pointing straight at this
+      # monorepo's own box, not proxied, confirmed via `getent hosts`) instead of a raw IP literal,
+      # since a hardcoded IP baked into a released binary would go stale the moment this box's own
+      # IP ever changes, while a maintained DNS record wouldn't. PLAY.bat itself stays as the real,
+      # separate localhost/offline-dev path (e.g. against a self-hosted server), unchanged.
       - name: Bundle Windows artifact
         shell: bash
         run: |
@@ -194,6 +214,9 @@ jobs:
           cp mapeditor.exe PAPERCRAFT_Windows/
           cp sdl2_mingw/bin/SDL2.dll PAPERCRAFT_Windows/
           printf '%s\r\n' "start papercraft_client.exe" > PAPERCRAFT_Windows/PLAY.bat
+          printf '%s\r\n' \
+            "start papercraft_client.exe --worldapi-host okemily.com --worldapi-port 7070 --server-host okemily.com --server-port 7799 --iduna-host okemily.com --iduna-port 8080" \
+            > PAPERCRAFT_Windows/PLAY_ONLINE.bat
           printf '%s\r\n' "start mapeditor.exe" > PAPERCRAFT_Windows/EDIT_MAP.bat
 
       - name: Upload Windows Artifact
