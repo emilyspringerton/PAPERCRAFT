@@ -784,8 +784,24 @@ int main(int argc, char **argv) {
        real wall-clock time of the last real SNAPSHOT actually received (set once welcomed, reset
        on every real SNAPSHOT after that); PC_CLIENT_STALE_MS is deliberately shorter than
        apps/server's own real PC_PLAYER_TIMEOUT_MS (30s) so a real reconnect attempt starts, and
-       has a real chance to land, well before the server would ever give up the old slot. */
-#define PC_CLIENT_STALE_MS 5000
+       has a real chance to land, well before the server would ever give up the old slot.
+
+       Real, live bug found and fixed (2026-08-29, founder real-time: "constant flickering of the
+       screen saying connection lost reconnecting" -- the first time this client was ever actually
+       played over a real public internet path, not localhost): the server broadcasts a real
+       SNAPSHOT to every connected player at the real 20Hz tick rate -- under real internet
+       conditions (not localhost's own zero-latency, zero-loss path this value was only ever
+       tuned/tested against), losing every single one of ~100 consecutive snapshots inside a real
+       5-second window is a real, comfortably-possible event during an ordinary jitter/loss burst,
+       not just a genuine multi-second outage -- and because the resulting reconnect (a fresh
+       CONNECT/WELCOME round trip) can complete in well under a second once the real burst passes,
+       the visible symptom is exactly a real, repeated flash, not one clean drop. Doubled to
+       10000ms -- real margin against ordinary real-world jitter/loss bursts, while still
+       comfortably inside the server's own real 30s PC_PLAYER_TIMEOUT_MS window (so a real
+       reconnect attempt still has a real chance to land before the server gives up the old slot
+       -- the original design intent this value's own doc comment above already states, unchanged
+       by this real adjustment). */
+#define PC_CLIENT_STALE_MS 10000
     unsigned int last_snapshot_ms = 0;
     int reconnecting = 0;
 
@@ -869,12 +885,17 @@ int main(int argc, char **argv) {
            reclaims the same slot the moment a real CONNECT lands, as long as it's still within
            the server's own real PC_PLAYER_TIMEOUT_MS window. */
         if (welcomed && now - last_snapshot_ms > PC_CLIENT_STALE_MS) {
+            unsigned int real_gap_ms = now - last_snapshot_ms; /* real, logged separately from the
+                configured threshold below -- a gap of 5001ms and a real gap of 40000ms both trip
+                this same real check, but they're very different real symptoms (borderline jitter
+                vs. a real, sustained drop), and until this real value is logged there was no way
+                to tell them apart from a real log capture after the fact. */
             welcomed = 0;
             reconnecting = 1;
             last_connect_retry_ms = now - 500; /* real, immediate retry -- don't wait a further
                                                     500ms on top of the real staleness window
                                                     that already just elapsed. */
-            fprintf(stderr, "Real SNAPSHOT stream stopped for %ums -- reconnecting.\n", PC_CLIENT_STALE_MS);
+            fprintf(stderr, "Real SNAPSHOT stream stopped for a real %ums (threshold %ums) -- reconnecting.\n", real_gap_ms, (unsigned int)PC_CLIENT_STALE_MS);
         }
 
         float move_x = 0.0f, move_z = 0.0f;
