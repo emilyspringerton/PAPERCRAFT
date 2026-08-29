@@ -1,0 +1,13 @@
+# Real example --mods-manifest for apps/server. Format: so_path|function-name per line
+# (blank lines and # comments skipped). Deliberately simpler than apps/dynmod_poc's own
+# testdata/manifest.txt -- no expected value or call arguments, since a real running server
+# doesn't self-check a mod's result the way a proof-of-concept tool does, it just registers
+# the function pointer. See MODDING.md's own "No dynamic loading in apps/server itself" entry
+# for the full real rationale, including the real, considered error-handling policy (a bad
+# mod is logged and skipped, never fatal to the server).
+#
+# Paths are relative to the PAPERCRAFT repo root, matching a real `bazel build //...` layout.
+bazel-bin/packages/simulation/libxp_award_mod.so|on_papercraft_xp_for_object_destroyed
+bazel-bin/packages/simulation/liblevel_mod.so|xp_required_for_level
+bazel-bin/packages/simulation/liblevel_mod.so|on_papercraft_level_for_xp
+bazel-bin/packages/simulation/libtalent_mod.so|on_papercraft_can_allocate_talent

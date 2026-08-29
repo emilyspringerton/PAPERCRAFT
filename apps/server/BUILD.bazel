@@ -13,6 +13,6 @@ cc_binary(
         "//packages/simulation:xp_award",
         "//packages/simulation:interact_falloff",
     ],
-    linkopts = ["-lm"],
+    linkopts = ["-lm", "-ldl"],
     visibility = ["//visibility:public"],
 )

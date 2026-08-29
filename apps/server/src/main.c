@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <dlfcn.h>
 
 #include "../../../packages/common/http_client.h"
 #include "../../../packages/common/hmac_sha256.h"
@@ -75,6 +76,9 @@ static PcWorldObjectFile g_wo_file;
 static PaperCubeMesh g_wo_mesh[PC_WO_MAX_OBJECTS];
 static char g_world_objects_path[256] = "var/world/objects.dat";
 static char g_world_damage_path[256] = "var/world/damage.dat";
+static char g_mods_manifest_path[256] = ""; /* empty = disabled, real default -- unchanged
+                                                behavior for every existing deployment/test until
+                                                --mods-manifest is explicitly given */
 static unsigned int g_last_world_save_ms = 0; /* real periodic damage-autosave cadence, shared
                                                   across all objects (not per-player) -- see
                                                   PC_AUTOSAVE_MS */
@@ -174,6 +178,115 @@ static void save_world_damage(void) {
     if (!pc_worldobjects_save_damage(g_world_damage_path, &damage)) {
         fprintf(stderr, "WARNING: save_world_damage failed -- disk full/permissions?\n");
     }
+}
+
+/* Real, minimal dynamic mod registry -- apps/server's own real, production-side proof that the
+   apps/dynmod_poc mechanism (dlopen/dlsym against an unmodified real PARENA-compiled .so) can be
+   wired into the real game server, not just a standalone tool (MODDING.md's own "an actual
+   apps/server call site" gap remains real, separate, next work -- nothing here is CALLED from any
+   gameplay code path yet, this is registration only). Loaded once at startup, only if
+   --mods-manifest names a real file. Real, deliberately different manifest format from
+   apps/dynmod_poc's own test-oriented one: just `so_path|function-name` per line (blank/#-prefixed
+   lines skipped) -- a real running server has no "expected value" to self-check against the way a
+   proof-of-concept tool does, it just needs to resolve and hold each real function pointer.
+
+   Real, considered error-handling policy, decided here for the first time (closes MODDING.md's own
+   "no designed error-handling policy for a bad/missing mod at real server startup" gap): a mod
+   that fails to load (missing .so, missing symbol, or a malformed manifest line) is logged as a
+   WARNING and skipped -- it never prevents the server from starting, and never affects any other
+   mod in the same manifest. Rationale: dynamically-loaded mods are optional gameplay layers on top
+   of the same statically-linked mod logic that already runs the game
+   (packages/simulation:xp_award etc. stay linked in, unchanged) -- a broken mod file must not be
+   able to take the whole persistent, always-running server down. A missing --mods-manifest file
+   itself is the same real, non-fatal case: "zero mods loaded", not an error, since a fresh
+   checkout before any real mod author has written one is the common real state. */
+#define PC_MOD_REGISTRY_MAX 16
+typedef struct {
+    char name[64];
+    void *fn;
+} PcModRegistryEntry;
+static PcModRegistryEntry g_mod_registry[PC_MOD_REGISTRY_MAX];
+static int g_mod_registry_count = 0;
+
+/* Real handle cache, same dlopen-once-per-distinct-path pattern apps/dynmod_poc's own manifest
+   mode already proved (S206-27) -- two manifest lines naming the same .so share one real loaded
+   instance rather than dlopen()ing it twice. */
+#define PC_MOD_LIB_MAX 16
+typedef struct {
+    char path[256];
+    void *handle;
+} PcModLib;
+static PcModLib g_mod_libs[PC_MOD_LIB_MAX];
+static int g_mod_lib_count = 0;
+
+static void *mod_get_handle(const char *path) {
+    for (int i = 0; i < g_mod_lib_count; i++) {
+        if (strcmp(g_mod_libs[i].path, path) == 0) return g_mod_libs[i].handle;
+    }
+    void *h = dlopen(path, RTLD_NOW);
+    if (!h) return NULL;
+    if (g_mod_lib_count < PC_MOD_LIB_MAX) {
+        strncpy(g_mod_libs[g_mod_lib_count].path, path, sizeof(g_mod_libs[g_mod_lib_count].path) - 1);
+        g_mod_libs[g_mod_lib_count].path[sizeof(g_mod_libs[g_mod_lib_count].path) - 1] = '\0';
+        g_mod_libs[g_mod_lib_count].handle = h;
+        g_mod_lib_count++;
+    }
+    return h;
+}
+
+static void load_mods_manifest(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        printf("No real mods manifest at %s -- starting with zero dynamically-loaded mods.\n", path);
+        return;
+    }
+    char line[512];
+    int lineno = 0;
+    while (fgets(line, sizeof(line), f)) {
+        lineno++;
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '\0' || *p == '\n' || *p == '#') continue;
+
+        size_t len = strlen(p);
+        while (len > 0 && (p[len - 1] == '\n' || p[len - 1] == '\r')) p[--len] = '\0';
+
+        char *sep = strchr(p, '|');
+        if (!sep) {
+            fprintf(stderr, "WARNING: mods manifest %s line %d: malformed (expected so_path|function), skipped\n", path, lineno);
+            continue;
+        }
+        *sep = '\0';
+        const char *so_path = p;
+        const char *fn_name = sep + 1;
+
+        if (g_mod_registry_count >= PC_MOD_REGISTRY_MAX) {
+            fprintf(stderr, "WARNING: mods manifest %s line %d: registry full (%d max), skipped %s\n", path, lineno, PC_MOD_REGISTRY_MAX, fn_name);
+            continue;
+        }
+
+        void *handle = mod_get_handle(so_path);
+        if (!handle) {
+            fprintf(stderr, "WARNING: mods manifest %s line %d: dlopen(%s) failed: %s -- mod skipped, server continues\n", path, lineno, so_path, dlerror());
+            continue;
+        }
+        dlerror();
+        void *sym = dlsym(handle, fn_name);
+        const char *err = dlerror();
+        if (err) {
+            fprintf(stderr, "WARNING: mods manifest %s line %d: dlsym(%s) in %s failed: %s -- mod skipped, server continues\n", path, lineno, fn_name, so_path, err);
+            continue;
+        }
+
+        strncpy(g_mod_registry[g_mod_registry_count].name, fn_name, sizeof(g_mod_registry[g_mod_registry_count].name) - 1);
+        g_mod_registry[g_mod_registry_count].name[sizeof(g_mod_registry[g_mod_registry_count].name) - 1] = '\0';
+        g_mod_registry[g_mod_registry_count].fn = sym;
+        g_mod_registry_count++;
+        printf("Real dynamically-loaded mod registered: %s (from %s)\n", fn_name, so_path);
+    }
+    fclose(f);
+    printf("Real mods manifest %s: %d mod(s) registered, %d distinct .so file(s) loaded.\n",
+           path, g_mod_registry_count, g_mod_lib_count);
 }
 
 /* Connect-ticket secret -- direct port of WEAKNIGHT_BEDROCK_RACERS' own real
@@ -356,6 +469,9 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "--damage-file") == 0 && i + 1 < argc) {
             strncpy(g_world_damage_path, argv[++i], sizeof(g_world_damage_path) - 1);
             g_world_damage_path[sizeof(g_world_damage_path) - 1] = '\0';
+        } else if (strcmp(argv[i], "--mods-manifest") == 0 && i + 1 < argc) {
+            strncpy(g_mods_manifest_path, argv[++i], sizeof(g_mods_manifest_path) - 1);
+            g_mods_manifest_path[sizeof(g_mods_manifest_path) - 1] = '\0';
         }
     }
 
@@ -519,6 +635,7 @@ int main(int argc, char **argv) {
 
     printf("Listening on UDP :%d (tick=%dHz)\n", server_port, PC_TICK_HZ);
     load_ticket_secret();
+    if (g_mods_manifest_path[0]) load_mods_manifest(g_mods_manifest_path);
 
     memset(g_slots, 0, sizeof(g_slots));
 

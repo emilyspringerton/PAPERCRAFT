@@ -504,9 +504,14 @@ including a real minimal manifest mode proving multiple distinct real mods (`lib
 `liblevel_mod.so`, and `libtalent_mod.so`) load and run together inside a single process at once,
 not just one mod per process — the last of those three carrying this repo's own first real
 `Bool`-return mod shape, VS0 compiling `Bool` to the exact same plain `int` ABI `I32` already
-uses, so no new dispatch code was needed to prove it — a real, standalone, low-risk proof of the
-core mechanism, not yet wired into `apps/server` itself, see `MODDING.md`'s own updated "No
-dynamic loading" entry) are now real and shipped (see the
+uses, so no new dispatch code was needed to prove it — and now genuinely wired into `apps/server`
+itself, not just the standalone `apps/dynmod_poc` tool: a real, optional
+`--mods-manifest <path>` flag (default off, zero behavior change unless given) loads a real
+manifest at startup into a small in-memory registry, with a real, designed error-handling policy
+(a bad mod logs a `WARNING` and is skipped, never fatal to the server) verified live against a
+real throwaway server instance — see `MODDING.md`'s own updated "No dynamic loading" entry for
+the full real detail, including the one real, separate piece still not done (nothing in that
+registry is called from a real gameplay code path yet) — are now real and shipped (see the
 sections above) — the
 full embedded, in-game PARENA editor/modding toolchain (a real, no-rebuild-needed, in-game
 version of the modding pipeline built on top of that now-proven mechanism; `MODDING.md`'s own

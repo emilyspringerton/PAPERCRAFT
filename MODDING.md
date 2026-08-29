@@ -254,12 +254,35 @@ asserts, not approximately.
   (`on_papercraft_can_allocate_talent(0, 1) = 1`, `(5, 1) = 0`, `(3, 0) = 0`), all three folded
   into `apps/dynmod_poc/testdata/manifest.txt` alongside the existing entries — the real manifest
   now spans **three** distinct `.so` files loaded together in one process (`7 call(s) checked, 7
-  passed, 0 failed`). What this does NOT yet prove: a manifest format `apps/server`
-  itself understands, a designed error-handling *policy* for a bad/missing mod at real server
-  startup (as opposed to this tool's own per-line report-and-continue behavior), or an actual call
-  site in `apps/server` that uses a
-  dynamically-loaded function instead of a statically-linked one — all real, separate, next
-  steps toward closing this gap for real, not attempted here.
+  passed, 0 failed`).
+
+  Also now real and verified (2026-08-29): the mechanism is wired into `apps/server` itself, not
+  just `apps/dynmod_poc`. A new, optional `--mods-manifest <path>` flag (default: unset, meaning
+  zero behavior change for every existing deployment/test) makes the real server read a manifest
+  at startup — a deliberately simpler real format than `apps/dynmod_poc`'s own,
+  `so_path|function-name` per line with no expected value or call arguments (a running server has
+  nothing to self-check a mod's result against; it just needs the real function pointer), see
+  `apps/server/testdata/mods_manifest.example.txt` for a real, checked-in example — `dlopen`s
+  every distinct `.so` it names exactly once and `dlsym`s every listed function into a small,
+  real in-memory registry (`g_mod_registry`). This is the first real, designed error-handling
+  *policy* for a bad/missing mod at server startup (closing that named gap too): a mod that fails
+  to load — missing `.so`, missing symbol, or a malformed manifest line — is logged as a
+  `WARNING` and skipped; it never prevents the server from starting or affects any other mod in
+  the same manifest, because dynamically-loaded mods are optional layers on top of the same
+  statically-linked mod logic that already runs the game. Verified live against a real, throwaway
+  server instance (real GoblinFoxDragon worldapi on `:7070`, isolated `--save-dir`/`--world-file`/
+  `--damage-file`): a real 4-mod manifest registers all 4 real functions across the real 3
+  distinct `.so` files and the server serves normally afterward; a real deliberately-broken
+  manifest (a missing `.so`, a missing symbol, a malformed line) logs three real `WARNING`s,
+  still registers the 2 good mods, and the server stays up and serving the entire time — confirmed
+  by checking the process was still alive after startup, not just that it didn't immediately
+  crash; and running with no `--mods-manifest` flag at all produces byte-for-byte the same real
+  startup log as before this change, confirming the real default-off behavior. What this does NOT
+  yet do: nothing in `g_mod_registry` is *called* from any real gameplay code path yet — an actual
+  call site in `apps/server` that uses a dynamically-loaded function instead of a
+  statically-linked one remains the one real, separate, next step toward closing this gap for
+  real, not attempted here (a bigger design question in its own right: what should gameplay do if
+  the mod that normally handles an event was never successfully loaded).
 - **No embedded, in-game PARENA editor.** `NORTHSTAR.md`'s own "The real, longer-arc modding
   vision" section names the actual end state the founder described — a real PARENA editor +
   compiler *embedded inside PAPERCRAFT itself*, so a player mods without ever leaving the game or
