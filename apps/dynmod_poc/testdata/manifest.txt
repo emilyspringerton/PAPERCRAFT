@@ -5,3 +5,10 @@ bazel-bin/packages/simulation/libxp_award_mod.so|on_papercraft_xp_for_object_des
 bazel-bin/packages/simulation/liblevel_mod.so|xp_required_for_level|195|3
 bazel-bin/packages/simulation/liblevel_mod.so|on_papercraft_level_for_xp|2|1|100
 bazel-bin/packages/simulation/liblevel_mod.so|xp_required_for_level|0|1
+# libtalent_mod.so's own on_papercraft_can_allocate_talent has a real Bool return type in its own
+# .prn source (PARENA/stdlib/papercraft/talent_mod.prn) -- VS0 compiles Bool to the same plain C
+# int ABI as I32, so this real mod needs no new manifest syntax or dispatch code, just real
+# hand-traced 0/1 expected values like any other real 2-arg entry above.
+bazel-bin/packages/simulation/libtalent_mod.so|on_papercraft_can_allocate_talent|1|0|1
+bazel-bin/packages/simulation/libtalent_mod.so|on_papercraft_can_allocate_talent|0|5|1
+bazel-bin/packages/simulation/libtalent_mod.so|on_papercraft_can_allocate_talent|0|3|0

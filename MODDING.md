@@ -243,10 +243,21 @@ asserts, not approximately.
   manifest (a missing `.so`, a missing function, a wrong expected value) reports each real failure
   per line, keeps going, and exits non-zero — real, useful *tool* behavior on a bad mod, though
   still not a designed *server* contract for what should happen at startup when a real mod is
-  missing or broken (see below). What this does NOT yet prove: a manifest format `apps/server`
+  missing or broken (see below). Also now real and verified: a real, first non-I32-return mod
+  shape. `talent_mod.prn` (`PARENA/stdlib/papercraft/talent_mod.prn`) declares its own
+  `on-papercraft-can-allocate-talent` with a `Bool` return type — VS0 compiles `Bool` to the exact
+  same plain C `int` ABI as `I32` (confirmed by reading `talent_mod.c`'s own real generated
+  return statement, a plain `((unspent_points > 0) && (ability_value < 5))` C expression), so
+  `apps/dynmod_poc` needed zero new dispatch code to call it — the existing 2-arg shape already
+  works. New `packages/simulation/libtalent_mod.so` target, same `alwayslink = True` pattern.
+  Verified live against three real hand-traced cases
+  (`on_papercraft_can_allocate_talent(0, 1) = 1`, `(5, 1) = 0`, `(3, 0) = 0`), all three folded
+  into `apps/dynmod_poc/testdata/manifest.txt` alongside the existing entries — the real manifest
+  now spans **three** distinct `.so` files loaded together in one process (`7 call(s) checked, 7
+  passed, 0 failed`). What this does NOT yet prove: a manifest format `apps/server`
   itself understands, a designed error-handling *policy* for a bad/missing mod at real server
-  startup (as opposed to this tool's own per-line report-and-continue behavior), a non-I32 (e.g.
-  `Bool`) argument or return shape, or an actual call site in `apps/server` that uses a
+  startup (as opposed to this tool's own per-line report-and-continue behavior), or an actual call
+  site in `apps/server` that uses a
   dynamically-loaded function instead of a statically-linked one — all real, separate, next
   steps toward closing this gap for real, not attempted here.
 - **No embedded, in-game PARENA editor.** `NORTHSTAR.md`'s own "The real, longer-arc modding

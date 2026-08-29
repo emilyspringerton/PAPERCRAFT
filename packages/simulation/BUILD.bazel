@@ -68,11 +68,18 @@ cc_test(
 )
 
 # talent -- the real, PARENA-compiled talent-point allocation gate, ported from the real
-# construct's own progression_try_allocate (SHANKPIT_CONSTRUCT.txt lines 867-872).
+# construct's own progression_try_allocate (SHANKPIT_CONSTRUCT.txt lines 867-872). This mod's own
+# real .prn source (PARENA/stdlib/papercraft/talent_mod.prn) declares a `Bool` return type -- the
+# real, first non-I32-return mod shape in this repo -- see :libtalent_mod.so below.
 cc_library(
     name = "talent",
     srcs = ["talent_mod.c"],
     hdrs = ["parena_runtime.h"],
+    # alwayslink: real, standard Bazel fix so this library's own real symbol
+    # (on_papercraft_can_allocate_talent) survives into :libtalent_mod.so below -- same real
+    # reason and same real no-op-for-apps/server tradeoff documented on :xp_award's own
+    # alwayslink, not repeated in full here.
+    alwayslink = True,
     visibility = ["//visibility:public"],
 )
 
@@ -80,6 +87,21 @@ cc_test(
     name = "talent_mod_test",
     srcs = ["talent_mod_test.c"],
     deps = [":talent"],
+)
+
+# libtalent_mod.so -- the EXACT same real, unmodified generated C as :talent above, built as a
+# real shared library for apps/dynmod_poc's own dlopen/dlsym proof of concept -- real, first
+# evidence that a `Bool`-returning real mod function (VS0 compiles `Bool` to the same plain `int`
+# ABI as `I32` in its generated C -- confirmed by reading talent_mod.c's own real return
+# statement, `return ((unspent_points > 0) && (ability_value < 5));`, a plain C `int` expression)
+# needs zero new dispatch code in apps/dynmod_poc -- the existing I32Fn2 shape already calls it
+# correctly, real 0/1 result and all.
+cc_binary(
+    name = "libtalent_mod.so",
+    deps = [":talent"],
+    linkshared = True,
+    linkopts = ["-Wl,--export-dynamic"],
+    visibility = ["//visibility:public"],
 )
 
 # stat_effects -- the real, PARENA-compiled per-stat gameplay CONSEQUENCE of a spent talent
