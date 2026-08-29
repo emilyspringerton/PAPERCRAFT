@@ -1,4 +1,5 @@
 ## 2026-08-29
+- Real first case of VoxelBlock city-wall integration: carved a real, confirmed-live ~15-block wall structure out of the city's normal render/collision path, replaced with a real non-cube Paper Engine object sized to its exact bounding box. Verified live -- server confirmed exact block-removal count, real UDP probe confirmed damage registers on the carved-out object. bazel build/test //... clean (19 targets, 8/8 mod tests). Commit 12aaa56. (sess-20260825-1938-f6bd411e)
 
 - Real interact damage falloff by distance: new PARENA mod (on-papercraft-interact-damage-falloff), composed with the existing material-resistance decision. Verified live -- the exact same 96-fragment PAPER object one-shot scenario (73/96 GONE before) now produces a real gradient (52 intact, 23 cracked, 11 torn, 10 gone), server log matching exactly. bazel build/test //... clean (19 targets, 8/8 mod tests). Commit ab65d43. (sess-20260825-1938-f6bd411e)
 
