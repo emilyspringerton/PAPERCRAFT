@@ -1,0 +1,53 @@
+# PAPERCRAFT game server -- user-level systemd unit (no sudo required)
+#
+# Deploy:
+#   mkdir -p ~/.config/systemd/user
+#   cp ops/systemd/papercraft-server.service ~/.config/systemd/user/
+#   gcc apps/server/src/main.c \
+#     packages/simulation/level_mod.c packages/simulation/talent_mod.c \
+#     packages/simulation/stat_effects_mod.c packages/simulation/paper_fragment_mod.c \
+#     packages/simulation/slide_jump_mod.c packages/simulation/xp_award_mod.c \
+#     packages/simulation/interact_falloff_mod.c \
+#     -o bin/papercraft_server -O2 -I. -Ipackages/common -Ipackages/simulation -lm -ldl
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now papercraft-server.service
+#
+# Added 2026-08-29 (founder real-time: "ok it released it flashes some text on the screen failure
+# something make sure the server is ready for me" -- the real CI-released v0.1.0 client works, but
+# no papercraft_server was ever actually running for it to connect to). Same pattern
+# weaknight-racers-server.service/shankpit460-server.service already established: a real
+# supervised unit from day one, not ad-hoc nohup process management fighting a future unit for the
+# same port.
+#
+# Fetches real terrain from GoblinFoxDragon's worldapi (gfd-server-go.service, already running on
+# :7070) via localhost -- both services live on this same box.
+#
+# PAPERCRAFT_TICKET_SECRET -- real HMAC connect-ticket verification, same EnvironmentFile pattern
+# every sibling game server's own ticket secret uses. Must match IDUNA's own
+# PAPERCRAFT_TICKET_SECRET (~/.config/iduna/env) byte-for-byte -- see
+# packages/common/papercraft_protocol.h's own ticket doc comment.
+#
+# --save-dir/--world-file/--damage-file deliberately left at their real defaults (var/players,
+# var/world/objects.dat, var/world/damage.dat, all relative to WorkingDirectory below) -- this is
+# the real, persistent production instance, not one of this repo's own isolated throwaway
+# verification instances from earlier development (those always passed explicit --save-dir/
+# --world-file/--damage-file precisely so they would NOT touch this real instance's own state).
+
+[Unit]
+Description=PAPERCRAFT game server (UDP :7799)
+After=network-online.target gfd-server-go.service
+Wants=gfd-server-go.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fatbaby/PAPERCRAFT
+EnvironmentFile=-%h/.config/papercraft-server/env
+ExecStart=/home/fatbaby/PAPERCRAFT/bin/papercraft_server --worldapi-host localhost --worldapi-port 7070
+Restart=on-failure
+RestartSec=10s
+StandardOutput=append:/home/fatbaby/PAPERCRAFT/var/logs/server.log
+StandardError=append:/home/fatbaby/PAPERCRAFT/var/logs/server.log
+MemoryMax=128M
+
+[Install]
+WantedBy=default.target
