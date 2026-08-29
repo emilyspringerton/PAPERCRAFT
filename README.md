@@ -31,18 +31,26 @@ Section 206 for the full session-by-session build log with commit hashes and App
   catching accidental overlaps.
 - **Real RPG progression.** Construct-accurate XP curve, leveling, a 5-slot talent tree, a real
   MOVE-stat speed boost, and real bonus XP for destroying a world object — all PARENA-decided,
-  all persisted across a restart.
+  all persisted across a restart. A real, live-updating HUD shows level/XP/points/ability ranks.
 - **Real jump + a first trick.** Real gravity/jump physics, plus a construct-ported slide-jump
   speed boost (crouch + jump while moving).
+- **Real abandoned-connection handling.** A crashed/closed client's slot is freed (with a final
+  autosave) after 30s of silence; the client detects a lost connection within 5s and shows a real
+  reconnect screen instead of freezing.
 - **A real, verified modding pipeline.** See [`MODDING.md`](MODDING.md) — write a `.prn` mod,
   compile it, wire it into the host, run a server on your own machine, connect a client. Proven
-  live with a brand-new mod built specifically to test the doc.
+  live with a brand-new mod built specifically to test the doc. `apps/server` can also load a mod
+  *dynamically* (`--mods-manifest`, live-reloadable via `SIGHUP`, no host rebuild) for the one real
+  call site wired to prefer it — see `MODDING.md`'s own "No dynamic loading" entry for what that
+  does and doesn't cover yet.
 
 **Not yet real**: an embedded in-game PARENA editor (the modding pipeline above still needs a
-second repo + a host rebuild per mod — see `MODDING.md`'s own "What's honestly not here yet"), a
-graphical/live-server map editor, server-authoritative fragment physics, and full-city
-destructibility (two real wall structures are carved out today, not the whole city — the wire
-budget doesn't support that yet). Nothing here is claimed as done that isn't.
+second repo — `scripts/build-parena.sh` at least automates building it — and a host rebuild for
+any *new* mod call site, though one existing call site can already swap mods without a rebuild,
+see above), a graphical/live-server map editor, server-authoritative fragment physics, and
+full-city destructibility (two real wall structures, each a precise multi-box L-shape, are carved
+out today, not the whole city — the wire budget is measurably roomier than it was but still
+doesn't support that at full scale). Nothing here is claimed as done that isn't.
 
 ## Quick start
 
@@ -57,14 +65,16 @@ Build the real PARENA compiler (only needed if you're changing a `.prn` mod — 
 is committed, so a fresh clone builds without it):
 
 ```bash
-cd PARENA && make
+cd PAPERCRAFT && scripts/build-parena.sh   # or: cd ../PARENA && make
 ```
 
 Build PAPERCRAFT:
 
 ```bash
-cd PAPERCRAFT && bazel build //...
-bazel test //...   # 7 real PARENA mod tests + the paper-mesh geometry test (8 total)
+bazel build //...
+bazel test //...   # 11 real tests: 8 PARENA mod/geometry tests (packages/simulation) + 3 pure
+                    # host-C tests (packages/common: HMAC RFC 4231 vectors, player-save round-trip,
+                    # world-object/damage-file round-trip)
 ```
 
 Run a real server (needs a real `worldapi` instance for city terrain, and a matching
@@ -91,6 +101,7 @@ Place/inspect real world objects offline:
 ./bazel-bin/apps/mapeditor/mapeditor list
 ./bazel-bin/apps/mapeditor/mapeditor add <x> <z> --material concrete
 ./bazel-bin/apps/mapeditor/mapeditor edit <index> --material metal --seed 42
+./bazel-bin/apps/mapeditor/mapeditor remove <index>
 ```
 
 Controls: WASD to move, Space to jump (hold Ctrl/Shift + tap Space for a real slide-jump boost),
