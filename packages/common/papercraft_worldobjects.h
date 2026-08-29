@@ -148,13 +148,16 @@ static inline int pc_worldobjects_save(const char *path, const PcWorldObjectFile
  * work, same as everywhere else in this repo that a "smallest real proof point" boundary was
  * drawn deliberately, not accidentally).
  *
- * Two real, partial mitigations exist for this exact index-desync risk, not a full fix
- * (2026-08-29): apps/mapeditor's own `edit` command changes an object's fields IN PLACE, at the
- * same real index, so it never triggers this problem at all; and `remove` now warns (doesn't
- * block) when removing anything but the LAST real object would shift others down while a real
- * damage file already exists at the paired path, naming exactly what's about to happen instead
- * of leaving it silent. The real, full fix (a stable per-object ID this struct doesn't have yet)
- * remains real, separate, cross-cutting work. */
+ * This index-desync risk is now genuinely closed for everything apps/mapeditor can do
+ * (2026-08-29), not just mitigated: `edit` changes an object's fields IN PLACE, at the same real
+ * index, so it never triggers this problem at all; and `remove` -- the ONLY real operation this
+ * entire toolset ever performs that reindexes objects (`add` only ever appends, `edit` never
+ * reindexes) -- now automatically shifts the real damage file's own rows to match, the same real
+ * shift it already applies to the objects themselves, rather than just warning that they'd go out
+ * of sync. A real, later, still-open piece: nothing OUTSIDE this toolset (a hand-edited file, a
+ * real future tool) is protected -- the real, full, general fix (a stable per-object ID this
+ * struct doesn't have yet) remains real, separate, cross-cutting work, just no longer needed for
+ * the one real operation that could actually trigger this within apps/mapeditor itself. */
 #define PC_WD_MAGIC 0x50435744u /* "PCWD" */
 
 typedef struct {

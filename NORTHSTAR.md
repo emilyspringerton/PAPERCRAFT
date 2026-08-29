@@ -274,12 +274,18 @@ Two more real, existing systems found in `SHANKPIT_CONSTRUCT.txt`, beyond the XP
   (`packages/common/papercraft_worldobjects.h`'s own `PcWorldDamageFile`, keyed by slot).
   Deliberately simple, not a smart re-placement: only the real fields a flag was actually given
   for change, no ground re-snap, no carve-box re-validation, real carve bounds always untouched.
-  `remove` also now warns (doesn't block) when removing anything but the LAST object would shift
-  others down an index while a real damage file already exists — `apps/server` restores per-
-  fragment damage BY INDEX, so a shifted object would otherwise silently inherit the wrong real
-  damage state on the next server start, a real, known, not-yet-fully-fixed limitation named in
-  `packages/common/papercraft_worldobjects.h`'s own doc comment (the full fix needs a stable
-  per-object ID, real, separate, cross-cutting work).
+  `remove` also now genuinely FIXES the real index-desync risk (2026-08-29), not just warns about
+  it: `apps/server` restores per-fragment damage BY INDEX, so removing anything but the LAST
+  object used to leave a shifted object's own damage state silently misattributed on the next
+  server start — `remove` is the ONLY real operation this whole toolset ever performs that
+  reindexes objects at all, so it now automatically shifts the real damage file's own rows to
+  match the objects it just shifted, the same real move, not a separate step that could be
+  forgotten. Verified live: a real 3-object file with distinct, identifiable per-object damage
+  markers (10/20/30), removing object 0 correctly moves object 1's own real damage (20) to slot 0
+  and object 2's own real damage (30) to slot 1. What's still real, open work: a hand-edited file
+  or a real future tool outside `apps/mapeditor` isn't protected by this — the real, full, general
+  fix (a stable per-object ID) remains real, separate, cross-cutting work, just no longer needed
+  for the one real operation that could actually trigger this within `apps/mapeditor` itself.
 
 ## The real, longer-arc modding vision
 

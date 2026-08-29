@@ -66,11 +66,9 @@ static void print_usage(void) {
         "\n"
         "  remove shifts every real object after <index> down one slot -- if a real damage file\n"
         "  already exists at --damage-file (default var/world/damage.dat, apps/server's own\n"
-        "  default), removing anything but the LAST object warns that those shifted objects will\n"
-        "  silently inherit the wrong real per-fragment damage state next time the server starts\n"
-        "  (apps/server restores damage BY INDEX, a real, known, not-yet-fixed limitation -- see\n"
-        "  packages/common/papercraft_worldobjects.h's own PcWorldDamageFile doc comment). Warns,\n"
-        "  doesn't block -- 'edit' never reindexes anything, so prefer it when it fits.\n"
+        "  default), it's automatically re-synced to match (apps/server restores damage BY INDEX,\n"
+        "  so a shifted object's own real per-fragment damage state moves with it, not left\n"
+        "  behind). 'edit' never reindexes anything at all, so prefer it when it fits.\n"
         "\n"
         "  --file defaults to var/world/objects.dat (same real default apps/server uses).\n"
         "  --half-extent sets all three real per-axis half-extents at once (a uniform cube);\n"
@@ -117,18 +115,21 @@ static int cmd_list(const char *path) {
     return 0;
 }
 
-/* cmd_remove: real, honest reindex-desync warning added (2026-08-29) -- closes the silent half of
-   papercraft_worldobjects.h's own already-named gap ("a real, later improvement would key
-   [PcWorldDamageFile] by something stable across a real map edit that reorders/removes objects").
-   Removing anything but the LAST real object shifts every real object AFTER it down one real
-   index -- apps/server's own damage restore is purely positional (`damage.hp[o][f]` keyed by
-   slot `o`, packages/common/papercraft_worldobjects.h), so if a real damage file already exists,
-   every shifted object would silently inherit a DIFFERENT real object's own damage state on the
-   server's next start. Not fixed here (the real fix is a stable per-object ID, a real, separate,
-   cross-cutting wire-format change -- PcWorldObjectDef, PcWorldDamageFile, and PcSnapshotPacket
-   would all need it, real wire-budget accounting included) -- but the previously SILENT footgun
-   is now a real, visible warning, same "warn, don't block" policy `add`'s own AABB overlap check
-   already established. */
+/* cmd_remove: real reindex-desync FIX, not just a warning (2026-08-29, closing the rest of what
+   S206-34's own warning-only pass left open) -- papercraft_worldobjects.h's own already-named gap
+   ("a real, later improvement would key [PcWorldDamageFile] by something stable across a real map
+   edit that reorders/removes objects"). Removing anything but the LAST real object shifts every
+   real object AFTER it down one real index -- apps/server's own damage restore is purely
+   positional (`damage.hp[o][f]` keyed by slot `o`), so a real damage file left untouched would
+   silently misattribute damage state after a restart. `remove` is the ONLY real operation this
+   entire toolset ever performs that reindexes objects at all (`add` only ever appends at
+   `wf.count`; `edit` never reindexes anything) -- so keeping the real damage file's own rows in
+   sync here, automatically, closes this real gap completely for everything `mapeditor` can do,
+   without needing the real, full, separate fix (a stable per-object ID, a cross-cutting wire-
+   format change) at all. The now-vacated real trailing damage row is left as-is, not zeroed --
+   apps/server's own damage-restore loop only ever iterates `for (o = 0; o < g_wo_file.count; o++)`,
+   so a stale row past the real, new (decremented) count is simply never read by anything real,
+   the same way `PcWorldObjectFile`'s own trailing object slots past `count` already work. */
 static int cmd_remove(const char *path, const char *damage_path, int index) {
     PcWorldObjectFile wf;
     if (!pc_worldobjects_load(path, &wf)) {
@@ -141,19 +142,18 @@ static int cmd_remove(const char *path, const char *damage_path, int index) {
     }
 
     int shifts = wf.count - 1 - index; /* real count of objects that will move down one index */
+    int damage_resynced = 0;
     if (shifts > 0) {
         PcWorldDamageFile damage;
         if (pc_worldobjects_load_damage(damage_path, &damage)) {
-            fprintf(stderr,
-                "WARNING: removing real object %d will shift %d real object(s) (index %d..%d -> %d..%d)\n"
-                "  down by one, but a real damage file already exists at %s.\n"
-                "  apps/server restores per-fragment damage BY INDEX -- each shifted object will\n"
-                "  silently inherit the damage state that used to belong to the object one index\n"
-                "  above it, the next time the server starts. Real, known limitation (see this\n"
-                "  file's own header comment) -- not fixed automatically. Delete or regenerate\n"
-                "  %s if that matters for this edit, or use 'mapeditor edit' instead where\n"
-                "  possible (edit never reindexes anything). Removing anyway.\n",
-                index, shifts, index + 1, wf.count - 1, index, wf.count - 2, damage_path, damage_path);
+            for (int i = index; i < wf.count - 1; i++) {
+                memcpy(damage.hp[i], damage.hp[i + 1], sizeof(damage.hp[i]));
+            }
+            if (!pc_worldobjects_save_damage(damage_path, &damage)) {
+                fprintf(stderr, "WARNING: could not save the real re-synced damage file %s -- real per-fragment damage state may now be misaligned.\n", damage_path);
+            } else {
+                damage_resynced = 1;
+            }
         }
     }
 
@@ -165,7 +165,12 @@ static int cmd_remove(const char *path, const char *damage_path, int index) {
         fprintf(stderr, "FATAL: could not save %s after removing object %d.\n", path, index);
         return 1;
     }
-    printf("Removed real object %d from %s -- %d object(s) remain.\n", index, path, wf.count);
+    if (damage_resynced) {
+        printf("Removed real object %d from %s -- %d object(s) remain (real damage file %s re-synced to match the new indices).\n",
+               index, path, wf.count, damage_path);
+    } else {
+        printf("Removed real object %d from %s -- %d object(s) remain.\n", index, path, wf.count);
+    }
     return 0;
 }
 
