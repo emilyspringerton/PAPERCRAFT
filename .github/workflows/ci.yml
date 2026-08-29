@@ -195,136 +195,6 @@ jobs:
           path: PAPERCRAFT_Windows/
           if-no-files-found: error
 
-  build_macos:
-    name: 🍎 Build macOS Client + Map Editor
-    # Real, honest scope note: this job's own real correctness (does the bundled .dylib actually
-    # let a clean Mac with no Homebrew/SDL2 installed run this) has never been verified against a
-    # real macOS machine -- this development environment is Linux-only, no known real macOS host
-    # available, the same real, honest verification-tier limit apps/client's own live-rendering
-    # work has carried all session (see NORTHSTAR.md's own Phase 1b/1c-client sections). The build
-    # steps below follow well-established, standard SDL2-on-macOS practice (Homebrew SDL2 +
-    # `-framework OpenGL` + install_name_tool rpath rewriting for a self-contained bundle) but this
-    # job's own first real GitHub Actions run on the real macos-latest runner is the actual proof,
-    # not this comment.
-    runs-on: macos-latest
-    needs: [test]
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install SDL2
-        shell: bash
-        run: |
-          set -euo pipefail
-          brew install sdl2
-
-      # Real, live bugs found on this job's own first three real GitHub Actions runs, all at this
-      # exact step, all with zero real diagnostic detail available at first -- GitHub's own
-      # log-download API needs admin rights this session doesn't have. Attempt 1 (relying on
-      # `sdl2-config`) and attempt 2 (a same-step `> build.log 2>&1` + `::error::` wrapper, but
-      # still reading `$SDL2_PREFIX` from a PRIOR step's `$GITHUB_ENV` export, under `set -u`) both
-      # failed with no new diagnostic detail -- the second attempt's own total silence (zero new
-      # `::error::` annotations, not even a partial one) is itself the real diagnostic: `set -u`
-      # terminates a non-interactive shell immediately on ANY unbound-variable reference, before
-      # running anything after it, INCLUDING this same wrapper's own error-reporting block -- so if
-      # cross-step `$GITHUB_ENV` propagation of `$SDL2_PREFIX` didn't work exactly as expected, the
-      # whole script would die silently at the `clang` line's own parameter expansion, never
-      # reaching `cat build.log` or the `::error::` loop at all. Real, comprehensive fix, attempt 3:
-      # (a) resolve `$SDL2_PREFIX` fresh IN THIS SAME STEP, not via a prior step's `$GITHUB_ENV` --
-      # removes cross-step propagation as a variable entirely; (b) no `set -u` at all, so a genuine
-      # unbound-variable reference can never again silently kill the script before it reports
-      # anything; (c) the ENTIRE sequence (prefix resolution, real directory listings of what got
-      # resolved, `clang --version`, the actual compile) is wrapped in one `{ ... } > build.log
-      # 2>&1` block, so whatever actually fails, everything that ran before it is captured too --
-      # not just the one command that happened to be last.
-      # Real root cause of THIS session's own inability to see any real error text, found from a
-      # founder-pasted real log (2026-08-29): GitHub Actions always invokes a `shell: bash` step
-      # as `bash --noprofile --norc -e -o pipefail {0}` -- that `-e` is imposed at the OUTER shell
-      # invocation, outside this script's own control, and it applies to commands inside a `{ }`
-      # brace group exactly the same as top-level commands. So the previous attempt's own `clang`
-      # failure inside `{ ... } > build.log 2>&1` killed the whole script immediately, right there
-      # -- `status=$?`, `cat build.log`, and the `::error::` loop below it NEVER ran. Every one of
-      # this job's own diagnostics was captured into build.log exactly as designed, then the
-      # script died before anything printed it. `set +e` here is the real fix: it explicitly turns
-      # OFF the externally-imposed `-e` for the rest of THIS script, so a failing command inside
-      # the `{ }` group no longer terminates it -- `status=$?` correctly captures the real failure,
-      # `cat build.log` finally prints the real captured output, and the `::error::` loop finally
-      # promotes it to a real, retrievable check-run annotation, before this step still correctly
-      # fails via the trailing `exit $status`.
-      - name: Build papercraft_client (macOS)
-        shell: bash
-        run: |
-          set +e
-          set -o pipefail
-          {
-            echo "=== brew --prefix sdl2 ==="
-            SDL2_PREFIX="$(brew --prefix sdl2)"
-            echo "SDL2_PREFIX=[$SDL2_PREFIX]"
-            echo "=== ls \$SDL2_PREFIX/include/SDL2 ==="
-            ls -la "$SDL2_PREFIX/include/SDL2" || true
-            echo "=== ls \$SDL2_PREFIX/lib ==="
-            ls -la "$SDL2_PREFIX/lib" || true
-            echo "=== clang --version ==="
-            clang --version || true
-            echo "=== compiling ==="
-            clang apps/client/src/main.c packages/simulation/paper_fragment_mod.c \
-              -o papercraft_client_macos \
-              -O2 \
-              -I"$SDL2_PREFIX/include/SDL2" \
-              -I. -Ipackages/common -Ipackages/simulation \
-              -L"$SDL2_PREFIX/lib" -lSDL2 \
-              -framework OpenGL -lm
-          } > build.log 2>&1
-          status=$?
-          cat build.log
-          if [ $status -ne 0 ]; then
-            while IFS= read -r line; do echo "::error::$line"; done < build.log
-            exit $status
-          fi
-
-      - name: Build mapeditor (macOS)
-        shell: bash
-        run: |
-          set -euo pipefail
-          clang apps/mapeditor/src/main.c \
-            -o mapeditor_macos \
-            -O2 \
-            -I. -Ipackages/common \
-            -lm
-
-      - name: Bundle macOS artifact (self-contained, no Homebrew required to run)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p PAPERCRAFT_macOS
-
-          # Real, standalone bundling: brew's own libSDL2 dylib is linked by its full real brew
-          # prefix path (e.g. /opt/homebrew/opt/sdl2/lib/libSDL2-2.0.0.dylib), which only resolves
-          # on a machine that has that exact same brew package installed -- not a real fix for a
-          # player who just downloaded a zip. install_name_tool rewrites both the binary's own
-          # load command and the copied dylib's own install name to @executable_path, the standard
-          # real macOS pattern for a self-contained app bundle (same real intent as the Windows
-          # job's own SDL2.dll-next-to-the-exe bundling, macOS's own real mechanism for it).
-          SDL2_DYLIB="$(otool -L papercraft_client_macos | grep -i libSDL2 | awk '{print $1}' | head -1)"
-          test -n "$SDL2_DYLIB"
-          cp "$SDL2_DYLIB" PAPERCRAFT_macOS/libSDL2.dylib
-          install_name_tool -id "@executable_path/libSDL2.dylib" PAPERCRAFT_macOS/libSDL2.dylib
-          install_name_tool -change "$SDL2_DYLIB" "@executable_path/libSDL2.dylib" papercraft_client_macos
-
-          cp papercraft_client_macos PAPERCRAFT_macOS/
-          cp mapeditor_macos PAPERCRAFT_macOS/
-          chmod +x PAPERCRAFT_macOS/papercraft_client_macos PAPERCRAFT_macOS/mapeditor_macos
-          printf '%s\n' "#!/usr/bin/env bash" "exec \"\$(dirname \"\$0\")/papercraft_client_macos\" \"\$@\"" > PAPERCRAFT_macOS/PLAY.sh
-          chmod +x PAPERCRAFT_macOS/PLAY.sh
-
-      - name: Upload macOS Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: papercraft-macos-${{ github.run_number }}-${{ github.sha }}
-          path: PAPERCRAFT_macOS/
-          if-no-files-found: error
-
   # Founder real-time: "ensure all our core repos have auto release non pre release" -- same exact
   # pattern PITVIPER's own ci.yml / SHANKPIT's own release.yml already established (2026-08-21,
   # "whenever a build passes release it as a minor version" -> "like a . bump" -> "i will handle
@@ -374,7 +244,6 @@ jobs:
           chmod +x dist/macos/papercraft_client_macos dist/macos/mapeditor_macos dist/macos/PLAY.sh
           (cd dist/linux && tar -czf ../../papercraft-linux-x86_64.tar.gz .)
           (cd dist/windows && zip -r ../../papercraft-windows-x86_64.zip .)
-          (cd dist/macos && tar -czf ../../papercraft-macos-x86_64.tar.gz .)
 
       - name: Compute next minor version
         id: version
@@ -404,6 +273,5 @@ jobs:
           gh release create "$NEXT_VERSION" \
             papercraft-linux-x86_64.tar.gz \
             papercraft-windows-x86_64.zip \
-            papercraft-macos-x86_64.tar.gz \
             --title "$NEXT_VERSION" \
             --generate-notes
