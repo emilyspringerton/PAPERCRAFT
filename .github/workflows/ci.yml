@@ -1,17 +1,20 @@
 name: PAPERCRAFT CI
 
 # Founder real-time, 2026-08-29: "make sure we have the proper clients uploading as artifacts" ->
-# "mac linux windows" -> "include the map editor". Real, bounded scope: apps/client + apps/mapeditor
-# built and uploaded as CI artifacts on all three real desktop platforms. apps/server deliberately
-# NOT included here -- it's POSIX-only by design (packages/common/papercraft_persist.h's own doc
-# comment: "the game server has no Windows branch anywhere else in this codebase either"), runs on
-# this monorepo's own Linux host, and isn't something a player installs -- same real "server vs.
-# distributed client" split SHANKPIT's own release.yml already draws (Windows CLIENT + Linux SERVER
-# only, no Windows server, no Mac anything). Release automation (auto-tag, GitHub Releases, matching
-# SHANKPIT's/PITVIPER's own "auto release non pre release" precedent) is deliberately NOT attempted
-# here -- the real ask was "uploading as artifacts", not "cut a release"; whether PAPERCRAFT is a
-# real release track yet (PITVIPER's own workflow draws that exact distinction against PARENA,
-# still pre-1.0) is a separate, later founder call, not decided here.
+# "mac linux windows" -> "include the map editor" -> (after this workflow's own first real run
+# turned out to have a real bug, see the "test" job's own comment below) "still i dont have any
+# papercraft releases" -> "and ci is failing". Real, bounded scope: apps/client + apps/mapeditor
+# built and uploaded as CI artifacts, AND cut as a real GitHub Release, on all three real desktop
+# platforms. apps/server deliberately NOT included here -- it's POSIX-only by design
+# (packages/common/papercraft_persist.h's own doc comment: "the game server has no Windows branch
+# anywhere else in this codebase either"), runs on this monorepo's own Linux host, and isn't
+# something a player installs -- same real "server vs. distributed client" split SHANKPIT's own
+# release.yml already draws (Windows CLIENT + Linux SERVER only, no Windows server, no Mac
+# anything). Release automation matches SHANKPIT's/PITVIPER's own "auto release non pre release"
+# precedent (2026-08-21/25 founder real-time, cited in full in this workflow's own release job
+# below) literally: a real release, no `--prerelease` flag, auto-bumping MINOR only on every real
+# push to main -- major-version bumps stay a real, human, founder call, same split every other
+# "core repo" in this monorepo already follows.
 
 on:
   push:
@@ -48,11 +51,25 @@ jobs:
 
       - uses: bazelbuild/setup-bazelisk@v3
 
-      - name: bazel test //...
+      # Real, live bug found and fixed (2026-08-29, this workflow's own first real GitHub Actions
+      # run): a bare `bazel test //...` matches EVERY target under `//...`, not just test rules --
+      # it also tries to build apps/client, apps/server, apps/mapeditor, and apps/dynmod_poc,
+      # since they're real targets the wildcard resolves to, even though nothing under them is a
+      # test. On this dev machine that's silently fine (libsdl2-dev/libgl-dev/libglu1-mesa-dev
+      # already installed from earlier work in this repo), which is exactly why this never showed
+      # up locally -- but a bare `ubuntu-latest` CI runner has none of those, so the real link
+      # step for `papercraft_client` (needs -lSDL2/-lGL/-lGLU) failed and took the whole `bazel
+      # test` invocation down with it, even though all 12 real test targets themselves passed.
+      # `--build_tests_only` is Bazel's own real, standard fix for exactly this: restrict the
+      # build graph to what the requested tests actually need, not every target the pattern
+      # happens to match. Verified locally: a clean `bazel test --build_tests_only //...` no
+      # longer compiles apps/client/src/main.c or apps/server/src/main.c at all (106 real actions
+      # vs. 152 before), while still running and passing all 12 real tests.
+      - name: bazel test --build_tests_only //...
         shell: bash
         run: |
           set -euo pipefail
-          bazel test //...
+          bazel test --build_tests_only //...
 
   build_linux:
     name: 🐧 Build Linux Client + Map Editor
@@ -255,3 +272,86 @@ jobs:
           name: papercraft-macos-${{ github.run_number }}-${{ github.sha }}
           path: PAPERCRAFT_macOS/
           if-no-files-found: error
+
+  # Founder real-time: "ensure all our core repos have auto release non pre release" -- same exact
+  # pattern PITVIPER's own ci.yml / SHANKPIT's own release.yml already established (2026-08-21,
+  # "whenever a build passes release it as a minor version" -> "like a . bump" -> "i will handle
+  # big bumps to signify human verify releases" -> "start pushing the artifacts to releases in
+  # github" -> "pitviper is not pre release" / "pitviper is release release"). Auto-bumps the
+  # MINOR version only on every real push to main (never PRs, never the tag-push this job's own
+  # release step triggers) -- major-version bumps stay a real, human, founder call. A REAL release
+  # (no `--prerelease` flag), matching "non pre release" literally. Reuses the exact same three
+  # real platform artifacts the jobs above already built rather than rebuilding anything.
+  release:
+    name: 🚀 Tag & Release
+    runs-on: ubuntu-latest
+    needs: [build_linux, build_windows, build_macos]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+
+    steps:
+      # fetch-depth: 0 -- need the full tag history to find the current version; actions/
+      # checkout's own default shallow clone doesn't reliably include tags.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: papercraft-linux-${{ github.run_number }}-${{ github.sha }}
+          path: dist/linux
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: papercraft-windows-${{ github.run_number }}-${{ github.sha }}
+          path: dist/windows
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: papercraft-macos-${{ github.run_number }}-${{ github.sha }}
+          path: dist/macos
+
+      - name: Package release assets
+        run: |
+          set -euo pipefail
+          chmod +x dist/linux/papercraft_client_linux dist/linux/mapeditor_linux dist/linux/PLAY.sh
+          chmod +x dist/macos/papercraft_client_macos dist/macos/mapeditor_macos dist/macos/PLAY.sh
+          (cd dist/linux && tar -czf ../../papercraft-linux-x86_64.tar.gz .)
+          (cd dist/windows && zip -r ../../papercraft-windows-x86_64.zip .)
+          (cd dist/macos && tar -czf ../../papercraft-macos-x86_64.tar.gz .)
+
+      - name: Compute next minor version
+        id: version
+        run: |
+          set -euo pipefail
+          latest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+          if [ -z "$latest" ]; then
+            major=0
+            minor=0
+          else
+            ver="${latest#v}"
+            major="$(echo "$ver" | cut -d. -f1)"
+            minor="$(echo "$ver" | cut -d. -f2)"
+          fi
+          next_minor=$((minor + 1))
+          next="v${major}.${next_minor}.0"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_VERSION: ${{ steps.version.outputs.next }}
+        run: |
+          set -euo pipefail
+          git tag "$NEXT_VERSION"
+          git push origin "$NEXT_VERSION"
+          gh release create "$NEXT_VERSION" \
+            papercraft-linux-x86_64.tar.gz \
+            papercraft-windows-x86_64.zip \
+            papercraft-macos-x86_64.tar.gz \
+            --title "$NEXT_VERSION" \
+            --generate-notes

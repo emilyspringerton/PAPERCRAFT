@@ -799,11 +799,33 @@ The macOS job itself is NOT locally verifiable — no macOS host in this environ
 honest verification-tier limit named throughout Phase 1b/1c-client above; its first real run on
 GitHub's own `macos-latest` runner is the actual proof, not this doc.
 
-Deliberately not attempted here: release automation (auto-tag + GitHub Releases, matching
-SHANKPIT's/PITVIPER's own "auto release non pre release" precedent) — the real ask was "uploading
-as artifacts," not "cut a release," and whether PAPERCRAFT is a real release track yet (PITVIPER's
-own workflow draws that exact distinction against PARENA, still pre-1.0) is a separate, later
-founder call.
+**Update, same day: the workflow's own first real GitHub Actions run failed, and the founder made
+the release-automation call.** Two real, live pieces of founder real-time direction landed right
+after this section first shipped: "still i dont have any papercraft releases" (the release-
+automation piece above had been deliberately deferred as "a separate, later founder call" — that
+call is now made, real GitHub Releases, no `--prerelease` flag, matching SHANKPIT's/PITVIPER's own
+"auto release non pre release" precedent literally) and "and ci is failing" (confirming what a
+live GitHub API check had already found).
+
+Real root cause, found by comparing a truly cold local `bazel test //...` (cache fully wiped) — a
+bare `bazel test //...` matches EVERY target under `//...`, not just test rules: it also tries to
+build `apps/client`, `apps/server`, `apps/mapeditor`, and `apps/dynmod_poc`, since they're real
+targets the wildcard resolves to. This dev machine already has `libsdl2-dev`/`libgl-dev`/
+`libglu1-mesa-dev` installed from earlier work in this repo, so it never surfaced locally — a bare
+`ubuntu-latest` CI runner has none of those, so the real link step for `papercraft_client` failed
+and took the whole `bazel test` invocation down with it, even though all 12 real test targets
+themselves passed. Fixed with `--build_tests_only`, Bazel's own standard fix for exactly this —
+verified locally: a clean `bazel test --build_tests_only //...` no longer compiles
+`apps/client/src/main.c` or `apps/server/src/main.c` at all (106 real actions vs. 152 before),
+while still running and passing all 12 real tests.
+
+New `release` job: needs all three real platform build jobs, runs only on a real push to `main`
+(never PRs, never its own tag-push), auto-bumps the MINOR version only (major stays a real, human,
+founder call, same split every other "core repo" in this monorepo follows), tars/zips each
+platform's own already-built artifact, and cuts a real GitHub Release with `gh release create`
+(no `--prerelease`) — reuses the exact three artifacts the build jobs already produced, no
+rebuild. This workflow's own next real push is the actual end-to-end proof (a real tag, a real
+release, real assets attached) — not yet observed as of this doc's own last edit.
 
 ## Explicitly not scoped yet
 
