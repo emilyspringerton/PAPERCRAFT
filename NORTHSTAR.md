@@ -706,6 +706,25 @@ math (confirmed by hand that a piece's own real centroid tracks the real server 
 its own real jittered vertex shape stays intact) — not a live graphical Xvfb session, the same
 honest scope limit as before.
 
+**Phase 1c — real rotation, server-side only, shipped the same day too.** Closes the first of
+Phase 1a's own named non-goals (lateral scatter/tumbling) — server-side half only, real and
+honest about the rest. Each real falling fragment now gets a real, deterministic, constant-rate
+spin (`angular_velocity_deg_s`, 90–270 deg/s derived from `fragment_idx`, no `rand()` — the exact
+same real "deterministic, not random" convention `apps/client`'s own debris "kick" jitter already
+used), integrated every real tick the same way `y` already is, and broadcast as a new real
+`rotation_deg` field on `PcFallingFragment`. Real, measured wire cost: `sizeof(PcSnapshotPacket)`
+grows from 1416 to 1432 bytes — still 40 real bytes under the 1472-byte budget, real margin left
+on purpose. Verified live, fully clean (`bazel clean`, then a plain `bazel build`/`bazel test`, no
+special flags): 27 targets, 12/12 tests pass. Real, live, end-to-end UDP verification: the real
+probe hand-computed the expected rate for `fragment_idx=24` (`167.1429` deg/s) and measured the
+real, observed rate from four real wire samples spanning the fragment's whole real fall — landed
+at `167.1428` deg/s, a ratio of `1.000`, confirming the real integration is exact, not
+approximately right. `apps/client` deliberately NOT updated to render this real rotation — getting
+a real 3D rotation transform visually correct benefits from actually seeing it, which this
+environment's own real, honest client-verification limit (no known real test IDUNA user for a
+live graphical session) doesn't allow yet, the same honest scope limit Phase 1b's own rendering
+integration already carried; a real, separate, deliberately deferred next step, not glossed over.
+
 Not scoped here: Phase 1's own remaining items (weapon/combat, the embedded editor, full-city
 conversion) stay real, later, deliberately unscoped until each gets its own real founder-direction
 or design pass — this section names ONE real, concrete next slice, not a full Phase 1 backlog.

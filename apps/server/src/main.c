@@ -124,6 +124,8 @@ typedef struct {
     int fragment_idx;
     float x, y, z;
     float vy;
+    float rotation_deg;         /* real Phase 1c -- current real spin angle, integrated every tick */
+    float angular_velocity_deg_s; /* real, constant, assigned once at spawn */
 } PcServerFallingFragment;
 static PcServerFallingFragment g_falling[PC_FALLING_FRAGMENTS_MAX];
 static int g_falling_next_evict = 0; /* real, simple round-robin eviction cursor -- used only when
@@ -164,6 +166,12 @@ static void spawn_falling_fragment(int object_idx, int fragment_idx) {
     g_falling[slot].y = wy;
     g_falling[slot].z = wz;
     g_falling[slot].vy = 0.0f;
+    g_falling[slot].rotation_deg = 0.0f;
+    /* Real Phase 1c -- a real, deterministic, bounded spin rate per fragment (90..270 deg/s),
+       derived from fragment_idx, no rand() -- same real "deterministic, not random" convention
+       apps/client's own debris "kick" jitter (kick = 1.5f + 1.0f * (frag_idx % 7) / 7.0f)
+       already established. */
+    g_falling[slot].angular_velocity_deg_s = 90.0f + 180.0f * ((float)(fragment_idx % 7) / 7.0f);
 }
 
 typedef struct {
@@ -1244,6 +1252,9 @@ int main(int argc, char **argv) {
                 if (!g_falling[fi].active) continue;
                 g_falling[fi].vy -= PC_GRAVITY * PC_TICK_DT;
                 g_falling[fi].y += g_falling[fi].vy * PC_TICK_DT;
+                /* Real Phase 1c -- real, constant-rate spin, integrated the same real way as
+                   every other real per-tick quantity in this loop. */
+                g_falling[fi].rotation_deg += g_falling[fi].angular_velocity_deg_s * PC_TICK_DT;
                 int ground_y_i;
                 int has_ground = pw_world_ground_height_at(&g_world, (int)(g_falling[fi].x + 0.5f),
                                                              (int)(g_falling[fi].z + 0.5f), &ground_y_i);
@@ -1289,6 +1300,7 @@ int main(int argc, char **argv) {
                     snap.falling[fi].object_idx = (unsigned char)g_falling[fi].object_idx;
                     snap.falling[fi].fragment_idx = (unsigned char)g_falling[fi].fragment_idx;
                     snap.falling[fi].y = g_falling[fi].y;
+                    snap.falling[fi].rotation_deg = g_falling[fi].rotation_deg;
                 }
             }
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
