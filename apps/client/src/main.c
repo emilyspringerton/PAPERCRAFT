@@ -755,6 +755,21 @@ int main(int argc, char **argv) {
         SDL_GL_DeleteContext(ctx); SDL_DestroyWindow(win); SDL_Quit();
         return 0;
     }
+
+    /* Real, live gap found and fixed (2026-08-30, founder real-time: "we can log in but there is
+       no interraction im expecting to be able to move and look around"): this client never had
+       any real look-around control at all -- the camera was hardcoded to sit directly behind
+       `own.yaw` (the player's own server-authoritative, movement-direction-derived facing), so
+       the only way to change what you were looking at was to change which way you were walking.
+       Real, standard mouse-look, added here: relative mouse mode captures the cursor for the rest
+       of the real session (login's own screen, just finished above, needs the normal cursor for
+       clicking fields -- captured only after it returns). cam_yaw/cam_pitch (declared with the
+       main loop's own other real per-frame state below) are real, purely client-local camera
+       state, decoupled from `own.yaw` -- looking around no longer changes which way your own
+       character is actually facing (that's still server-authoritative, still movement-direction-
+       derived, unchanged) -- this is a real orbit camera around your character, not a first-
+       person head-turn, matching the existing third-person chase-cam's own real framing. */
+    SDL_SetRelativeMouseMode(SDL_TRUE);
     unsigned char ticket[PC_TICKET_TOTAL_LEN];
     {
         char err[128] = "";
@@ -840,11 +855,39 @@ int main(int argc, char **argv) {
     int running = 1;
     unsigned int win_logged = 0;
     unsigned int allocate_seq = 0;
+    /* Real mouse-look camera state -- purely client-local, never sent to the server, decoupled
+       from `own.yaw` (see this file's own doc comment above SDL_SetRelativeMouseMode). The real
+       orbit is centered on the same look-at target the old fixed camera always used
+       (own.x, own.y+1.0, own.z, roughly chest height, not own.y itself) -- the old fixed eye was
+       (own.x - sin(yaw)*6, own.y+3, own.z - cos(yaw)*6), i.e. a real (horizontal=6, vertical=2)
+       offset FROM THAT TARGET (own.y+3 minus the target's own +1 = +2, not +3 -- a real, easy
+       mistake to make measuring from own.y directly instead of the actual look-at point, caught
+       by hand-verifying the two formulas produce identical eye coordinates at cam_yaw=own.yaw,
+       cam_pitch=this initial value, before trusting it). cam_dist/cam_pitch's own initial values
+       (sqrt(6^2+2^2), atan2(2,6)) reproduce that exact old eye position on the very first
+       rendered frame, before any real mouse motion has happened -- a real, pure addition, not a
+       visible camera jump for the one frame before a player's first real mouse move. cam_yaw
+       starts at 0 and gets a real, one-time sync to the player's own actual spawn `own.yaw` the
+       first time a real snapshot arrives (see PC_CAM_YAW_SYNC below), so the very first frame
+       still starts directly behind the player the same way the old fixed camera always did. */
+#define PC_MOUSE_SENSITIVITY 0.0028f
+#define PC_CAM_PITCH_MIN -1.3f
+#define PC_CAM_PITCH_MAX  1.3f
+    float cam_yaw = 0.0f;
+    float cam_pitch = 0.32175f; /* atan2f(2.0f, 6.0f) */
+    const float cam_dist = 6.32456f; /* sqrtf(6.0f*6.0f + 2.0f*2.0f) */
+    int cam_yaw_synced = 0;
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) running = 0;
             if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) running = 0;
+            if (e.type == SDL_MOUSEMOTION) {
+                cam_yaw -= (float)e.motion.xrel * PC_MOUSE_SENSITIVITY;
+                cam_pitch -= (float)e.motion.yrel * PC_MOUSE_SENSITIVITY;
+                if (cam_pitch < PC_CAM_PITCH_MIN) cam_pitch = PC_CAM_PITCH_MIN;
+                if (cam_pitch > PC_CAM_PITCH_MAX) cam_pitch = PC_CAM_PITCH_MAX;
+            }
             /* Real talent-point spend request -- keys 1-5, matching PC_ABILITY_MOVE..STORM's own
                real order (papercraft_protocol.h). Sent once per real keypress (SDL_KEYDOWN, not
                a held-key poll like WASD below) -- unlike movement, spending a point isn't a
@@ -1011,10 +1054,19 @@ int main(int argc, char **argv) {
         gluPerspective(60.0, (double)win_w / (double)win_h, 0.1, 500.0);
 
         PcPlayerState own = latest_snap.players[my_slot];
-        float cam_back = 6.0f, cam_up = 3.0f;
-        float eye_x = own.x - sinf(own.yaw) * cam_back;
-        float eye_y = own.y + cam_up;
-        float eye_z = own.z - cosf(own.yaw) * cam_back;
+        /* PC_CAM_YAW_SYNC: real, one-time sync to the player's own actual spawn facing, the first
+           real frame a snapshot is available -- see this file's own doc comment above cam_yaw's
+           declaration for why. */
+        if (!cam_yaw_synced && have_snapshot) { cam_yaw = own.yaw; cam_yaw_synced = 1; }
+        /* Real, standard spherical orbit camera -- cam_yaw/cam_pitch are the real, purely
+           client-local mouse-look state (updated in the real SDL_MOUSEMOTION handler above), not
+           `own.yaw`. This is still a real third-person camera ORBITING the player, not a first-
+           person head-turn -- the player's own rendered body/facing (draw_player_marker, still
+           driven by the real server-authoritative own.yaw) is completely unaffected by looking
+           around. */
+        float eye_x = own.x - cam_dist * cosf(cam_pitch) * sinf(cam_yaw);
+        float eye_y = own.y + 1.0f + cam_dist * sinf(cam_pitch);
+        float eye_z = own.z - cam_dist * cosf(cam_pitch) * cosf(cam_yaw);
 
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();

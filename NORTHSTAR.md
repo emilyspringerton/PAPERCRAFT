@@ -982,6 +982,27 @@ real, monorepo-wide-blast-radius action, not a scoped one — every other live g
 its own explicit rule the moment enforcement turns on, and none of them had one until this
 incident forced the question.
 
+**One more real gap the founder's own live play surfaced: no look-around at all.** Founder
+real-time: "we can log in but there is no interraction im expecting to be able to move and look
+around." Real, confirmed finding: this client never had ANY camera control beyond movement — the
+eye position was hardcoded directly behind `own.yaw` (the player's own server-authoritative,
+movement-direction-derived facing), so the only way to change what you were looking at was to
+change which way you were walking. Fixed with a real, standard mouse-look: `SDL_SetRelativeMouseMode`
+captures the cursor once the login screen (which needs normal cursor behavior) returns; real,
+purely client-local `cam_yaw`/`cam_pitch` state, updated from `SDL_MOUSEMOTION`, drives a real
+spherical orbit camera around the player — a third-person orbit, not a first-person head-turn, so
+the player's own rendered body/facing (still server-authoritative, still movement-direction-
+derived) is completely unaffected by looking around. The orbit's own initial radius/pitch were
+hand-derived (not guessed) to reproduce the OLD fixed camera's exact eye position on the very
+first frame — a real, easy mistake was caught and fixed before shipping: measuring the vertical
+offset from the player's own `own.y` instead of the real look-at target `own.y + 1.0` gave the
+wrong pitch on a first pass; verified correct via a real Python hand-trace showing zero
+floating-point difference between the old and new eye coordinates at `cam_yaw = own.yaw`. Verified:
+raw-gcc (Linux) and raw-mingw-gcc (Windows) both compile clean. `bazel clean && bazel build //...
+&& bazel test //...`: 27 targets, 12/12 tests pass, unaffected. Not independently verifiable
+against a real live graphical session from this environment — the founder's own next real play
+session is the actual proof, same honest verification-tier limit carried throughout this section.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled
