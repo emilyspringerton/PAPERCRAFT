@@ -211,6 +211,72 @@ cc_test(
     deps = [":phone"],
 )
 
+# item_drop -- the real, PARENA-compiled item-drop decision for PAPERCRAFT's own GTA3-style
+# "stuff drops and you can pick it up" system. Generated from
+# PARENA/stdlib/papercraft/item_drop_mod.prn via `parena build`, committed here.
+cc_library(
+    name = "item_drop",
+    srcs = ["item_drop_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "item_drop_mod_test",
+    srcs = ["item_drop_mod_test.c"],
+    deps = [":item_drop"],
+)
+
+# inventory -- the real, PARENA-compiled inventory-slot decisions (stack-max, can-stack) for
+# PAPERCRAFT's own FFXI-style list inventory. Generated from
+# PARENA/stdlib/papercraft/inventory_mod.prn via `parena build`, committed here.
+cc_library(
+    name = "inventory",
+    srcs = ["inventory_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "inventory_mod_test",
+    srcs = ["inventory_mod_test.c"],
+    deps = [":inventory"],
+)
+
+# pickup -- the real, PARENA-compiled pickup-radius decision for PAPERCRAFT's own GTA3-style
+# walk-over item pickup. Generated from PARENA/stdlib/papercraft/pickup_mod.prn via
+# `parena build`, committed here.
+cc_library(
+    name = "pickup",
+    srcs = ["pickup_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "pickup_mod_test",
+    srcs = ["pickup_mod_test.c"],
+    deps = [":pickup"],
+)
+
+# papercraft_inventory_test -- real, pure, headless coverage for packages/common/
+# papercraft_inventory.h's own pc_try_add_item_to_inventory, against the real, live
+# PARENA-compiled :inventory library (not a mock) -- same real cross-package shape as
+# :paper_mesh_test below (a real packages/common header, real PARENA-compiled decision logic).
+# This is the real, permanent, native replacement for a first-pass throwaway Python UDP probe
+# (founder real-time, 2026-08-30: "can we make it a native test?").
+cc_test(
+    name = "papercraft_inventory_test",
+    srcs = ["papercraft_inventory_test.c"],
+    deps = [
+        ":inventory",
+        "//packages/common:common_headers",
+    ],
+)
+
 # interact_falloff -- the real, PARENA-compiled interact damage falloff-by-distance decision,
 # closing paper_mesh.h's own honestly-deferred gap ("uniform per-fragment for this first real
 # pass; falloff by distance is real, later tuning"). Composes with :paper_fragment (material

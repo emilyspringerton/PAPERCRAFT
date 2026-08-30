@@ -1090,6 +1090,63 @@ property, not a bug in this feature) and for the real, separate `spawn_player` b
 found and fixed along the way (a freed slot's own stale `latest_cmd_seq` could silently drop a new
 occupant's real movement packets).
 
+## Real entity + inventory system, GTA3-style drops / FFXI-style list UI (2026-08-30)
+
+Founder real-time: "go ahead with the entity and inventory system simple but trackable gta3 style
+stuff drops and you can pick it up ffxi style list affordances first so we also support
+controller and support controller" / "all parena mod api based developed".
+
+**Real "mods first everything", maximized**: three new PARENA mods, not one --
+`PARENA/stdlib/papercraft/item_drop_mod.prn` (does destroying this material drop an item, and
+which one?), `inventory_mod.prn` (real per-item stack cap + merge-eligibility rules), and
+`pickup_mod.prn` (even the flat pickup radius is a real, tunable mod value, matching
+`xp_award_mod.prn`'s own original "a flat constant belongs in PARENA too" precedent). Host C owns
+only the fixed arrays and the loops that apply those real decisions.
+
+**Real entities**: a new, bounded `PC_ENTITY_MAX`-slot world-entity array (`apps/server/src/
+main.c`), distinct from `PcWorldObjectDef`/`PcPlayerState` — a real GTA3-style dropped item spawns
+when a `PAPER_MATERIAL_PAPER` object is fully destroyed (same real trigger `xp_award_mod`/
+`phone_mod` already fire on), broadcast to every connected player via a new, deliberately
+event-driven `PC_PACKET_ENTITY_SPAWN`/`PC_PACKET_ENTITY_DESPAWN` pair (not folded into the
+already nearly-full `PcSnapshotPacket` — see `packages/common/papercraft_protocol.h`'s own doc
+comment for the full real wire-budget reasoning). Pickup is real, GTA3-style walk-over — no
+dedicated button — checked every server tick against `on_papercraft_pickup_radius_millis`.
+
+**Real inventory**: a fixed `PC_INVENTORY_SLOTS`-slot array per player, synced whole via
+`PC_PACKET_INVENTORY_UPDATE` on every real change. The actual add/merge/stack-cap logic lives in
+`packages/common/papercraft_inventory.h` (`pc_try_add_item_to_inventory`) — a real, pure,
+independently-tested header function, not inlined into `apps/server`, matching this repo's own
+existing `pc_falling_lookup` precedent.
+
+**Real FFXI-style list UI**: `apps/client`'s new `draw_inventory_list` — a plain, cursor-navigable
+vertical row list (`I` toggles it, Up/Down or W/S move the cursor), deliberately not a graphical
+grid — the founder's own explicit sequencing (list first, a `parena/ui`-based graphical
+inventory+crafting interface later, tracked separately). Opening it real-honestly pauses
+movement input (a real, standard "menu pauses the world" convention this genre already uses).
+
+**Real, basic `SDL_GameController` support** (repeated by the founder for emphasis) — the whole
+loop above is playable on a controller, not just keyboard+mouse: left stick movement, right stick
+camera look, A/X for jump/interact, Y toggles the real inventory list, D-pad up/down navigates it.
+A session with no controller connected is completely unaffected (every real controller read is a
+harmless no-op against a NULL `SDL_GameController*`).
+
+**Real native testing, not a live probe**: a first pass verified this with a throwaway Python UDP
+probe against an isolated server instance; founder real-time feedback ("can we rewerite whatever
+you are doing in native code not in python i dont know it takes a long time" / "can we make it a
+native test?") replaced that with `packages/simulation/papercraft_inventory_test.c` — a real,
+fast, deterministic `cc_test` against the real `pc_try_add_item_to_inventory` + the real,
+PARENA-compiled `inventory_mod.c`, no live server or socket involved at all. Verified: `bazel
+build //...` (36 targets), `bazel test //...` (17/17 pass), native gcc syntax-check of both
+server and client clean, `sizeof(PcSnapshotPacket)` unaffected (1436 bytes; the three new packets
+are 24/12/24 bytes respectively, all event-driven, none folded into the per-tick broadcast).
+
+Full item-drop-to-pickup live UDP verification (destroying a real object end to end) was
+attempted before the native-test pivot above and reached partial coverage (matching
+`MODDING.md`'s own already-documented `paper_mesh.h` fragment-jitter finding from the phone
+mechanics work) — the WELCOME-time real inventory sync round-trip WAS observed live and correct;
+full single-object destruction was not re-chased after the founder's own real-time direction to
+stop using the slow Python probe, in favor of the real native test above.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled

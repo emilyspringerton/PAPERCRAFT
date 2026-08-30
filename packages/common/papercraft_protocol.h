@@ -25,6 +25,9 @@
 #define PC_PACKET_ALLOCATE_TALENT  5
 #define PC_PACKET_INTERACT         6
 #define PC_PACKET_PHONE_MESSAGE    7
+#define PC_PACKET_ENTITY_SPAWN     8
+#define PC_PACKET_ENTITY_DESPAWN   9
+#define PC_PACKET_INVENTORY_UPDATE 10
 
 /* Connect-ticket auth -- direct port of racer_protocol.h's own RC_TICKET_* wire format. Minted
  * by IDUNA's PapercraftTicketHandler (internal/http/handlers/papercraft_ticket.go) from a real
@@ -158,6 +161,65 @@ typedef struct {
     PcHeader hdr;
     unsigned char message_id; /* PC_PHONE_MESSAGE_*, never 0 */
 } PcPhoneMessagePacket;
+
+/* Real, "simple but trackable" GTA3-style item drops + FFXI-style list inventory (founder
+ * real-time, 2026-08-30: "go ahead with the entity and inventory system simple but trackable
+ * gta3 style stuff drops and you can pick it up ffxi style list affordances first"). PAPERCRAFT's
+ * own first real world-entity concept, distinct from the fixed PcWorldObjectDef/PcPlayerState
+ * split -- a dropped item is neither a player nor a persistent map object, it's a real, short-
+ * lived, server-spawned thing a player walks over and it's gone.
+ *
+ * Real, deliberately event-driven wire design (same real reasoning as PcPhoneMessagePacket's own
+ * doc comment): PcSnapshotPacket already sits at 1436 of a 1472-byte UDP MTU budget, only 36
+ * bytes of real headroom -- nowhere near enough to fold a real entity array into the continuous
+ * per-tick broadcast the way world_objects/falling are. Entities spawn and despawn rarely (an
+ * object breaks, a player walks over the drop) compared to the 20Hz snapshot cadence, so a real
+ * one-packet-per-event design (GTA3-style pickups aren't a continuous stream either) fits both
+ * the wire budget and the actual real event frequency far better. The client keeps its own real,
+ * local list of currently-active entities, built entirely from these two event packets --
+ * PC_PACKET_ENTITY_SPAWN adds one, PC_PACKET_ENTITY_DESPAWN removes it -- same real
+ * "client independently regenerates state from a shared id" discipline PC_PHONE_MESSAGE_TABLE
+ * and the world-object system both already use, just event-driven instead of snapshot-driven.
+ * Broadcast to every real connected player (a dropped item is real and visible to everyone in the
+ * world, not just the player who caused it), same real broadcast-loop shape apps/server's own
+ * snapshot send already uses. */
+#define PC_ENTITY_MAX 32 /* real, small, bounded cap, same "small bounded cap" precedent
+    PC_MAX_PLAYERS/PC_WO_MAX_OBJECTS/PC_FALLING_FRAGMENTS_MAX already set -- raising it later is
+    real, separate, easy work once this real first slice earns it. */
+
+/* PC_ITEM_*: real item-id constants. 0 is reserved for "no item" (a mod returning 0 means "this
+ * event drops nothing"), never a real, spawnable item. Must match item_drop_mod.prn's own
+ * item-scrap constant byte-for-byte. */
+#define PC_ITEM_NONE  0
+#define PC_ITEM_SCRAP 1
+
+typedef struct {
+    PcHeader hdr;
+    unsigned char entity_id;  /* 0..PC_ENTITY_MAX-1, this world's own real, currently-active slot index */
+    unsigned char item_id;    /* PC_ITEM_*, never PC_ITEM_NONE on the wire */
+    float x, y, z;
+} PcEntitySpawnPacket;
+
+typedef struct {
+    PcHeader hdr;
+    unsigned char entity_id;
+} PcEntityDespawnPacket;
+
+/* Real, fixed-slot inventory -- PC_INVENTORY_SLOTS bounded slots per player, same "small bounded
+ * cap" discipline as PC_ENTITY_MAX above. Sent whole (not as a per-slot delta) on every real
+ * change -- simple and small enough (PC_INVENTORY_SLOTS * 2 bytes = 16) that a real delta
+ * protocol would be premature complexity for this real first slice. */
+#define PC_INVENTORY_SLOTS 8
+
+typedef struct {
+    unsigned char item_id; /* PC_ITEM_NONE for a real, honestly-empty slot */
+    unsigned char count;
+} PcInventorySlot;
+
+typedef struct {
+    PcHeader hdr;
+    PcInventorySlot slots[PC_INVENTORY_SLOTS];
+} PcInventoryUpdatePacket;
 
 /* PC_DEFAULT_OBJECT_*: the real, original world-positioned Paper Engine destructible prop this
  * session first proved the whole real pipeline with (subdivide+jitter generation, real

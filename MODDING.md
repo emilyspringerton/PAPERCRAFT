@@ -241,6 +241,27 @@ one) with a real UDP probe minting its own valid HMAC connect ticket. Live-verif
   live dispatch proof), reaching 82 of 96 fragments destroyed before this verification pass ended
   — an honest partial live proof, not a claimed full one.
 
+**Third worked example (2026-08-30): `item_drop_mod.prn` / `inventory_mod.prn` / `pickup_mod.prn`**
+— GTA3-style item drops + FFXI-style list inventory (see `NORTHSTAR.md`'s own full section).
+Real, useful lesson from this one: two separate mods each defined their own private helper
+function named `item-scrap` for the same real item-id constant -- VS0's generated C gives every
+module-private helper plain, non-static linkage, so linking both mods into the same real server
+binary failed with a real `ld` "multiple definition" error. **A modder writing more than one real
+mod that needs the same named constant must give each module's own private helper a unique name**
+(e.g. `item-drop-scrap-id` vs `inventory-scrap-id`) -- a real, current VS0 limitation (no
+per-module static/private linkage yet), not a bug in either mod's own logic.
+
+Also real: this example's own first verification pass used a throwaway Python UDP probe (same
+shape as the phone-mechanics example above) — founder real-time feedback ("can we rewerite
+whatever you are doing in native code not in python i dont know it takes a long time" / "can we
+make it a native test?") replaced it with a real, permanent `cc_test`
+(`packages/simulation/papercraft_inventory_test.c`) against a real, pure header
+(`packages/common/papercraft_inventory.h`) instead — deterministic, instant, no live server
+required. Prefer this shape (pure header + `cc_test`) over a live UDP probe whenever a mod's own
+real logic can be exercised without an actual running server and socket at all; reach for a live
+probe only for the parts that genuinely can't be (e.g. confirming a packet really gets dispatched
+over the wire).
+
 ## What's honestly not here yet
 
 - **No dynamic loading in `apps/server` itself.** A new mod still means editing three files in

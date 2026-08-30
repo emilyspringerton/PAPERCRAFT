@@ -639,6 +639,90 @@ static void draw_phone_notification(int win_w, int win_h, unsigned char msg_id) 
     pc_draw_string(line, (float)win_w / 2.0f - 150.0f, 40.0f, 8);
 }
 
+/* PC_ITEM_TABLE -- real, hardcoded item-id -> display-name lookup, must match
+   packages/common/papercraft_protocol.h's own PC_ITEM_* values byte-for-byte (same real
+   "shared, hardcoded table keyed by a wire id" convention PC_PHONE_MESSAGE_TABLE already uses).
+   Index 0 (PC_ITEM_NONE) is a real, honest "empty slot" label, never actually spawned as a real
+   world entity. */
+static const char *PC_ITEM_TABLE[] = {
+    "-- empty --",  /* 0: PC_ITEM_NONE */
+    "Scrap",        /* 1: PC_ITEM_SCRAP */
+};
+#define PC_ITEM_TABLE_COUNT (sizeof(PC_ITEM_TABLE) / sizeof(PC_ITEM_TABLE[0]))
+
+static const char *pc_item_name(unsigned char item_id) {
+    return (item_id < PC_ITEM_TABLE_COUNT) ? PC_ITEM_TABLE[item_id] : "Unknown Item";
+}
+
+/* draw_entity_marker -- real, simple, 3D world-space marker for a GTA3-style dropped item entity
+   (founder real-time, 2026-08-30: "gta3 style stuff drops and you can pick it up"). Deliberately
+   plain -- a small, slowly-bobbing colored box, not real item-specific model art (this sandbox
+   has none yet) -- matching draw_player_marker's own real "simple box stand-in" discipline right
+   below. Real, gentle vertical bob (a plain sine of wall-clock time) so a drop reads as "alive"/
+   pickup-able at a glance, distinct from the static Paper Engine geometry around it. */
+static void draw_entity_marker(float x, float y, float z, unsigned char item_id) {
+    (void)item_id; /* only one real item exists yet (PC_ITEM_SCRAP) -- a real per-item color/model
+                       table is later, easy work once there's more than one to tell apart. */
+    float bob = 0.12f * sinf((float)now_ms() / 350.0f);
+    glPushMatrix();
+    glTranslatef(x, y + 0.35f + bob, z);
+    float h = 0.18f;
+    glBegin(GL_QUADS);
+    glColor3f(0.55f, 0.42f, 0.28f); /* real, plain "scrap" brown -- distinct from every other real marker color in this file */
+    glVertex3f(-h, h, -h); glVertex3f(h, h, -h); glVertex3f(h, h, h); glVertex3f(-h, h, h);
+    glVertex3f(-h, -h, h); glVertex3f(h, -h, h); glVertex3f(h, -h, -h); glVertex3f(-h, -h, -h);
+    glVertex3f(-h, -h, -h); glVertex3f(-h, h, -h); glVertex3f(-h, h, h); glVertex3f(-h, -h, h);
+    glVertex3f(h, -h, h); glVertex3f(h, h, h); glVertex3f(h, h, -h); glVertex3f(h, -h, -h);
+    glVertex3f(-h, h, h); glVertex3f(h, h, h); glVertex3f(h, -h, h); glVertex3f(-h, -h, h);
+    glVertex3f(-h, -h, -h); glVertex3f(h, -h, -h); glVertex3f(h, h, -h); glVertex3f(-h, h, -h);
+    glEnd();
+    glPopMatrix();
+}
+
+/* draw_inventory_list -- real, FFXI-style list inventory overlay (founder real-time, 2026-08-30:
+   "ffxi style list affordances first" -- a real, plain, cursor-navigable vertical row list,
+   deliberately not a graphical grid/icon inventory, matching the founder's own explicit
+   sequencing: list first, `parena/ui`-based graphical inventory+crafting later, S206-66). Shown
+   as a real, centered 2D panel on top of the still-rendering 3D scene, same real overlay
+   discipline every other real HUD element in this file uses -- input is separately, fully
+   suppressed elsewhere while this is open (see the main loop's own "menu pauses movement" real
+   comment), so there's no real ambiguity about whether WASD is walking or scrolling. */
+static void draw_inventory_list(int win_w, int win_h, const PcInventorySlot *slots, int cursor) {
+    glDisable(GL_DEPTH_TEST);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, win_w, 0, win_h, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    float panel_w = 340.0f, panel_h = 40.0f + 26.0f * (float)PC_INVENTORY_SLOTS;
+    float px = (float)win_w / 2.0f - panel_w / 2.0f;
+    float py = (float)win_h / 2.0f - panel_h / 2.0f;
+
+    glColor3f(0.08f, 0.08f, 0.11f);
+    glBegin(GL_QUADS);
+    glVertex2f(px, py); glVertex2f(px + panel_w, py);
+    glVertex2f(px + panel_w, py + panel_h); glVertex2f(px, py + panel_h);
+    glEnd();
+
+    glColor3f(0.9f, 0.85f, 0.6f);
+    pc_draw_string("INVENTORY", px + 16.0f, py + panel_h - 30.0f, 8);
+
+    for (int i = 0; i < PC_INVENTORY_SLOTS; i++) {
+        float row_y = py + panel_h - 60.0f - 26.0f * (float)i;
+        char line[80];
+        if (slots[i].item_id == PC_ITEM_NONE) {
+            snprintf(line, sizeof(line), "%s  %s", (i == cursor) ? ">" : " ", pc_item_name(slots[i].item_id));
+        } else {
+            snprintf(line, sizeof(line), "%s  %-16s x%d", (i == cursor) ? ">" : " ", pc_item_name(slots[i].item_id), slots[i].count);
+        }
+        if (i == cursor) glColor3f(0.95f, 0.85f, 0.3f);
+        else if (slots[i].item_id == PC_ITEM_NONE) glColor3f(0.4f, 0.4f, 0.42f);
+        else glColor3f(0.85f, 0.85f, 0.85f);
+        pc_draw_string(line, px + 16.0f, row_y, 7);
+    }
+}
+
 static void draw_player_marker(float x, float y, float z, float yaw, int is_own) {
     glPushMatrix();
     glTranslatef(x, y + 0.9f, z);
@@ -803,7 +887,7 @@ int main(int argc, char **argv) {
     static unsigned char g_prev_wo_state[PC_WO_MAX_OBJECTS][PC_WO_FRAGMENTS];
     static int g_prev_wo_state_valid = 0;
 
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return 1;
     }
@@ -883,6 +967,50 @@ int main(int argc, char **argv) {
        as draw_weak_connection_indicator's own real gap readout, just latched instead of live. */
     unsigned char phone_msg_id = 0;
     unsigned int phone_msg_shown_ms = 0;
+
+    /* Real, "simple but trackable" GTA3-style dropped-item entities + FFXI-style list inventory
+       (founder real-time, 2026-08-30). Local entity list is built ENTIRELY from real
+       PC_PACKET_ENTITY_SPAWN/DESPAWN events (see papercraft_protocol.h's own doc comment) -- this
+       client never asks "what entities exist", it just remembers what it's been told, same real
+       discipline PC_PHONE_MESSAGE_TABLE already uses for phone messages. g_client_entities index
+       IS entity_id, matching the server's own array-index-is-id convention. Inventory is a real,
+       whole-array snapshot each time PC_PACKET_INVENTORY_UPDATE arrives, not a delta. */
+    typedef struct { int active; unsigned char item_id; float x, y, z; } ClientEntity;
+    static ClientEntity g_client_entities[PC_ENTITY_MAX];
+    PcInventorySlot g_inventory[PC_INVENTORY_SLOTS];
+    memset(g_inventory, 0, sizeof(g_inventory));
+    int inventory_open = 0;
+    int inventory_cursor = 0;
+
+    /* Real, basic SDL_GameController support (founder real-time, repeated for emphasis: "so we
+       also support controller and support controller") -- opens the first real, currently
+       connected controller if one exists; a session with none just leaves `pad` NULL and every
+       real controller read below is a real, harmless no-op (`SDL_GameControllerGetAxis`/
+       `GetButton` both return 0 for a NULL controller), so keyboard+mouse play is completely
+       unaffected either way. Real, bounded mapping for this first pass: left stick = movement
+       (blended additively with WASD, same final [-1,1] clamp the server already applies), right
+       stick = camera look (added to the existing real mouse-look deltas, not a replacement),
+       A = jump, X = interact/punch, Y = toggle inventory, D-pad up/down = navigate the real
+       inventory list while it's open. B/crouch and any deeper remapping are real, later,
+       deliberately deferred work -- this is a real "can actually play the whole loop on a
+       controller" bar, not a full input-remapping system. */
+    SDL_GameController *pad = NULL;
+    for (int gi = 0; gi < SDL_NumJoysticks(); gi++) {
+        if (SDL_IsGameController(gi)) {
+            pad = SDL_GameControllerOpen(gi);
+            if (pad) {
+                printf("Controller connected: %s\n", SDL_GameControllerName(pad));
+                break;
+            }
+        }
+    }
+#define PC_PAD_DEADZONE 8000 /* real, standard analog-stick deadzone (SDL's own raw axis range is
+    -32768..32767) -- filters real, small resting-state stick drift/noise without needing any
+    per-controller calibration. */
+#define PC_PAD_LOOK_SPEED 0.045f /* real, per-frame yaw/pitch radians at full stick deflection --
+    tuned to feel roughly comparable to the existing real mouse-look's own per-pixel sensitivity
+    at a normal, real mouse-move speed, not derived from a formula. */
+
     int have_snapshot = 0;
     int my_slot = 0;
     unsigned int last_connect_retry_ms = now_ms();
@@ -998,6 +1126,37 @@ int main(int argc, char **argv) {
                     req.hdr.sequence = ++allocate_seq;
                     sendto(sock, (const char *)&req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
                 }
+                /* Real, FFXI-style list inventory toggle + navigation (founder real-time,
+                   2026-08-30: "ffxi style list affordances first"). 'I' opens/closes the real
+                   list overlay (draw_inventory_list below); while open, Up/Down step the real
+                   cursor one real row per real keypress (not a held-key poll, matching how a
+                   real menu list scrolls, not how movement works) -- WASD/arrow movement is
+                   separately zeroed out below while the menu is open, same real "menu pauses
+                   movement" convention this genre already uses. */
+                if (e.key.keysym.sym == SDLK_i) {
+                    inventory_open = !inventory_open;
+                } else if (inventory_open && (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w)) {
+                    inventory_cursor = (inventory_cursor - 1 + PC_INVENTORY_SLOTS) % PC_INVENTORY_SLOTS;
+                } else if (inventory_open && (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s)) {
+                    inventory_cursor = (inventory_cursor + 1) % PC_INVENTORY_SLOTS;
+                }
+            }
+            /* Real, discrete controller-button events (SDL_CONTROLLERBUTTONDOWN, not a held-state
+               poll) for the same real one-per-press actions as their keyboard equivalents above --
+               X = interact (E), Y = toggle inventory (I), D-pad up/down = list navigate. */
+            if (ever_welcomed && e.type == SDL_CONTROLLERBUTTONDOWN) {
+                if (e.cbutton.button == SDL_CONTROLLER_BUTTON_X) {
+                    PcInteractPacket req; memset(&req, 0, sizeof(req));
+                    req.hdr.type = PC_PACKET_INTERACT;
+                    req.hdr.sequence = ++allocate_seq;
+                    sendto(sock, (const char *)&req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+                } else if (e.cbutton.button == SDL_CONTROLLER_BUTTON_Y) {
+                    inventory_open = !inventory_open;
+                } else if (inventory_open && e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_UP) {
+                    inventory_cursor = (inventory_cursor - 1 + PC_INVENTORY_SLOTS) % PC_INVENTORY_SLOTS;
+                } else if (inventory_open && e.cbutton.button == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
+                    inventory_cursor = (inventory_cursor + 1) % PC_INVENTORY_SLOTS;
+                }
             }
         }
 
@@ -1041,6 +1200,21 @@ int main(int argc, char **argv) {
                 phone_msg_id = pm.message_id;
                 phone_msg_shown_ms = now_ms();
                 printf("Phone notification received -- message_id %u.\n", pm.message_id);
+            } else if (hdr.type == PC_PACKET_ENTITY_SPAWN && (size_t)n >= sizeof(PcEntitySpawnPacket)) {
+                PcEntitySpawnPacket sp; memcpy(&sp, buf, sizeof(sp));
+                if (sp.entity_id < PC_ENTITY_MAX) {
+                    g_client_entities[sp.entity_id].active = 1;
+                    g_client_entities[sp.entity_id].item_id = sp.item_id;
+                    g_client_entities[sp.entity_id].x = sp.x;
+                    g_client_entities[sp.entity_id].y = sp.y;
+                    g_client_entities[sp.entity_id].z = sp.z;
+                }
+            } else if (hdr.type == PC_PACKET_ENTITY_DESPAWN && (size_t)n >= sizeof(PcEntityDespawnPacket)) {
+                PcEntityDespawnPacket dp; memcpy(&dp, buf, sizeof(dp));
+                if (dp.entity_id < PC_ENTITY_MAX) g_client_entities[dp.entity_id].active = 0;
+            } else if (hdr.type == PC_PACKET_INVENTORY_UPDATE && (size_t)n >= sizeof(PcInventoryUpdatePacket)) {
+                PcInventoryUpdatePacket iu; memcpy(&iu, buf, sizeof(iu));
+                memcpy(g_inventory, iu.slots, sizeof(g_inventory));
             }
         }
 
@@ -1079,6 +1253,41 @@ int main(int argc, char **argv) {
         unsigned int buttons = 0;
         if (keys[SDL_SCANCODE_SPACE]) buttons |= PC_BTN_JUMP;
         if (keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_LSHIFT]) buttons |= PC_BTN_CROUCH;
+
+        /* Real, basic controller input -- see `pad`'s own doc comment above for the full real
+           mapping. Every read here is a real, harmless no-op when `pad` is NULL (no controller
+           connected), so this never changes keyboard+mouse behavior on its own. */
+        if (pad) {
+            Sint16 lx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
+            Sint16 ly = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
+            if (lx > PC_PAD_DEADZONE || lx < -PC_PAD_DEADZONE) move_x += (float)lx / 32767.0f;
+            if (ly < -PC_PAD_DEADZONE || ly > PC_PAD_DEADZONE) move_z -= (float)ly / 32767.0f; /* SDL's own real Y axis is down-positive, world +Z (forward) is the real inverse */
+            if (move_x > 1.0f) move_x = 1.0f;
+            if (move_x < -1.0f) move_x = -1.0f;
+            if (move_z > 1.0f) move_z = 1.0f;
+            if (move_z < -1.0f) move_z = -1.0f;
+
+            Sint16 rx = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_RIGHTX);
+            Sint16 ry = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_RIGHTY);
+            if (rx > PC_PAD_DEADZONE || rx < -PC_PAD_DEADZONE) cam_yaw -= ((float)rx / 32767.0f) * PC_PAD_LOOK_SPEED;
+            if (ry > PC_PAD_DEADZONE || ry < -PC_PAD_DEADZONE) cam_pitch -= ((float)ry / 32767.0f) * PC_PAD_LOOK_SPEED;
+            if (cam_pitch < PC_CAM_PITCH_MIN) cam_pitch = PC_CAM_PITCH_MIN;
+            if (cam_pitch > PC_CAM_PITCH_MAX) cam_pitch = PC_CAM_PITCH_MAX;
+
+            if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_A)) buttons |= PC_BTN_JUMP;
+            if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_B)) buttons |= PC_BTN_CROUCH;
+        }
+
+        /* Real "menu pauses movement" -- while the real inventory list is open, WASD/stick/jump/
+           crouch input is real, deliberately zeroed rather than sent through, so browsing the
+           list doesn't also walk the character around or trigger a jump. A real, empty UserCmd
+           still gets sent below (keeps last_usercmd_ms fresh server-side), just with no real
+           movement in it. */
+        if (inventory_open) {
+            move_x = 0.0f;
+            move_z = 0.0f;
+            buttons = 0;
+        }
 
         if (ever_welcomed) {
             PcUserCmdPacket cmd; memset(&cmd, 0, sizeof(cmd));
@@ -1232,6 +1441,11 @@ int main(int argc, char **argv) {
         }
         g_prev_wo_state_valid = 1;
         update_and_draw_debris(g_debris, &latest_snap);
+        for (int ei = 0; ei < PC_ENTITY_MAX; ei++) {
+            if (!g_client_entities[ei].active) continue;
+            draw_entity_marker(g_client_entities[ei].x, g_client_entities[ei].y, g_client_entities[ei].z,
+                                g_client_entities[ei].item_id);
+        }
         if (have_snapshot) {
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 if (!latest_snap.active[i]) continue;
@@ -1258,6 +1472,9 @@ int main(int argc, char **argv) {
                 draw_phone_notification(win_w, win_h, phone_msg_id);
             }
         }
+        if (inventory_open) {
+            draw_inventory_list(win_w, win_h, g_inventory, inventory_cursor);
+        }
 
         SDL_GL_SwapWindow(win);
 
@@ -1269,6 +1486,7 @@ int main(int argc, char **argv) {
         SDL_Delay(16);
     }
 
+    if (pad) SDL_GameControllerClose(pad);
     SDL_GL_DeleteContext(ctx);
     SDL_DestroyWindow(win);
     SDL_Quit();

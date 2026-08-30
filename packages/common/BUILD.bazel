@@ -10,6 +10,7 @@ cc_library(
         "http_client.h",
         "hud_text.h",
         "paper_mesh.h",
+        "papercraft_inventory.h",
         "papercraft_persist.h",
         "papercraft_protocol.h",
         "papercraft_world.h",

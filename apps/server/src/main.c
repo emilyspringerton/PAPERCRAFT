@@ -39,6 +39,7 @@
 #include "../../../packages/common/http_client.h"
 #include "../../../packages/common/hmac_sha256.h"
 #include "../../../packages/common/papercraft_protocol.h"
+#include "../../../packages/common/papercraft_inventory.h"
 #include "../../../packages/common/papercraft_world.h"
 #include "../../../packages/common/paper_mesh.h"
 #include "../../../packages/common/papercraft_persist.h"
@@ -210,7 +211,28 @@ typedef struct {
     int was_holding_jump;
     int speed_boost_permille;      /* 1000 = no boost; see PC_SLIDE_JUMP_BOOST_MS */
     unsigned int speed_boost_until_ms;
+
+    /* Real, fixed-slot inventory (2026-08-30, founder real-time: "gta3 style stuff drops and you
+       can pick it up ffxi style list affordances"). Reuses PcInventoryUpdatePacket's own
+       PcInventorySlot type directly -- this IS the wire shape, not a server-internal type that
+       gets translated into one. NOT yet persisted across a restart (packages/common/
+       papercraft_persist.h's own PcSaveRecord has no inventory field yet) -- a real, honest,
+       explicitly deferred gap for this first slice, same as position/XP were before persistence
+       existed at all; a fresh spawn AND a real restart-restore both start empty for now. */
+    PcInventorySlot inventory[PC_INVENTORY_SLOTS];
 } PlayerSlot;
+
+/* Real, "simple but trackable" GTA3-style dropped-item entity -- see packages/common/
+   papercraft_protocol.h's own doc comment on PcEntitySpawnPacket for the full real design
+   rationale (event-driven, not folded into the continuous snapshot). Array index IS the real
+   entity_id sent on the wire, same "slot index is the id" convention g_slots[]/PC_MAX_PLAYERS
+   already uses for client_id. */
+typedef struct {
+    int active;
+    unsigned char item_id;
+    float x, y, z;
+} ServerEntity;
+static ServerEntity g_entities[PC_ENTITY_MAX];
 
 /* Real PARENA-compiled progression decisions (packages/simulation/level_mod.c) -- wiring the
    already-tested "mods first everything" leveling logic into the actual live game loop for the
@@ -222,6 +244,10 @@ int on_papercraft_move_speed_boost_permille(int move_rank);
 int on_papercraft_slide_jump_boost_permille(int speed_milli);
 int on_papercraft_xp_for_object_destroyed(void);
 int on_papercraft_phone_message_for_event(int event_type);
+int on_papercraft_item_for_object_destroyed(int material);
+int on_papercraft_inventory_stack_max(int item_id);
+int on_papercraft_inventory_can_stack(int existing_item_id, int incoming_item_id);
+int on_papercraft_pickup_radius_millis(void);
 
 /* I32Fn0 -- real function-pointer shape for a dynamically-loaded, zero-arg I32-returning mod
    function, same real shape apps/dynmod_poc's own I32Fn0 already proved dlopen/dlsym-compatible.
@@ -577,6 +603,13 @@ static void spawn_player(PlayerSlot *s) {
     s->speed_boost_permille = 0;
     s->speed_boost_until_ms = 0;
     s->last_xp_tick_ms = 0;
+    /* Real, deliberate inventory reset too -- same real class of bug as latest_cmd_seq above
+       (a stale previous occupant's own leftover inventory must never carry over to a genuinely
+       new player). Position/XP restore from a real save file below for an existing player_id;
+       inventory does not yet (no PcSaveRecord field for it -- a real, explicitly deferred gap,
+       not an oversight), so it always starts real-and-empty here regardless of which branch
+       below this slot takes. */
+    memset(s->inventory, 0, sizeof(s->inventory));
 
     if (s->has_player_id) {
         PcSaveRecord rec;
@@ -641,6 +674,69 @@ static void award_xp(PlayerSlot *s, int amount, int slot_idx) {
                slot_idx, old_level, new_level, s->state.xp, new_level - old_level);
     }
     s->state.xp_to_next = xp_required_for_level(s->state.level < 20 ? s->state.level + 1 : 20);
+}
+
+/* g_pickup_radius -- real, cached float form of the real PARENA-decided
+   on_papercraft_pickup_radius_millis(), read once at startup (a real, static tuning value, not a
+   per-event decision -- see pickup_mod.prn's own doc comment) and reused every tick rather than
+   re-calling the mod and re-dividing by 1000.0f on every single active-entity/active-player pair,
+   every tick. */
+static float g_pickup_radius = 0.0f;
+
+/* broadcast_entity_spawn / broadcast_entity_despawn -- real, sent to every currently-active
+   player (a dropped item is visible to everyone in the real persistent world, not just whoever
+   caused it), same real broadcast-loop shape apps/server's own snapshot send already uses below
+   in the main tick loop. */
+static void broadcast_entity_spawn_to(int sock, int entity_id, PlayerSlot *s) {
+    PcEntitySpawnPacket sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.hdr.type = PC_PACKET_ENTITY_SPAWN;
+    sp.entity_id = (unsigned char)entity_id;
+    sp.item_id = g_entities[entity_id].item_id;
+    sp.x = g_entities[entity_id].x;
+    sp.y = g_entities[entity_id].y;
+    sp.z = g_entities[entity_id].z;
+    sendto(sock, &sp, sizeof(sp), 0, (struct sockaddr *)&s->addr, s->addr_len);
+}
+
+static void broadcast_entity_spawn(int sock, int entity_id) {
+    for (int i = 0; i < PC_MAX_PLAYERS; i++) {
+        if (!g_slots[i].active) continue;
+        broadcast_entity_spawn_to(sock, entity_id, &g_slots[i]);
+    }
+}
+
+static void broadcast_entity_despawn(int sock, int entity_id) {
+    PcEntityDespawnPacket dp;
+    memset(&dp, 0, sizeof(dp));
+    dp.hdr.type = PC_PACKET_ENTITY_DESPAWN;
+    dp.entity_id = (unsigned char)entity_id;
+    for (int i = 0; i < PC_MAX_PLAYERS; i++) {
+        if (!g_slots[i].active) continue;
+        sendto(sock, &dp, sizeof(dp), 0, (struct sockaddr *)&g_slots[i].addr, g_slots[i].addr_len);
+    }
+}
+
+/* send_inventory_update -- real, whole-inventory sync to ONE specific player (unlike the entity
+   broadcasts above, a player's own inventory contents are private to them, never sent to anyone
+   else -- same real "only the owner needs it" reasoning PcSnapshotPacket::echo_cmd_time_ms's own
+   doc comment already used for round-trip time). */
+static void send_inventory_update(int sock, PlayerSlot *s) {
+    PcInventoryUpdatePacket iu;
+    memset(&iu, 0, sizeof(iu));
+    iu.hdr.type = PC_PACKET_INVENTORY_UPDATE;
+    memcpy(iu.slots, s->inventory, sizeof(iu.slots));
+    sendto(sock, &iu, sizeof(iu), 0, (struct sockaddr *)&s->addr, s->addr_len);
+}
+
+/* try_add_item_to_inventory -- thin, real per-player wrapper around packages/common/
+   papercraft_inventory.h's own real, pure, independently-tested pc_try_add_item_to_inventory
+   (packages/common/papercraft_inventory_test.c). Pulled out to a shared header (2026-08-30,
+   founder real-time: "can we make it a native test?" -- replacing a first-pass, slow, throwaway
+   Python UDP probe) so the real add-to-inventory logic itself needs no live server, no PlayerSlot,
+   and no UDP wire round trip to verify at all -- this function is now just PlayerSlot plumbing. */
+static int try_add_item_to_inventory(PlayerSlot *s, int item_id) {
+    return pc_try_add_item_to_inventory(s->inventory, item_id);
 }
 
 int main(int argc, char **argv) {
@@ -866,6 +962,9 @@ int main(int argc, char **argv) {
     if (g_mods_manifest_path[0]) load_mods_manifest(g_mods_manifest_path);
 
     memset(g_slots, 0, sizeof(g_slots));
+    memset(g_entities, 0, sizeof(g_entities));
+    g_pickup_radius = (float)on_papercraft_pickup_radius_millis() / 1000.0f;
+    printf("Real, PARENA-decided pickup radius: %.2f world units.\n", g_pickup_radius);
 
     unsigned int last_tick_ms = now_ms();
     const unsigned int tick_ms = 1000 / PC_TICK_HZ;
@@ -973,6 +1072,19 @@ int main(int argc, char **argv) {
                 w.hdr.client_id = (unsigned char)slot_idx;
                 w.client_id = (unsigned char)slot_idx;
                 sendto(sock, &w, sizeof(w), 0, (struct sockaddr *)&s->addr, s->addr_len);
+
+                /* Real, one-time catch-up for a freshly-connected (or reconnecting) client: every
+                   currently-active real entity already dropped in the world gets sent as its own
+                   real spawn packet, so a late joiner sees item drops that happened before they
+                   connected -- without this, a client's own local entity list (built entirely
+                   from spawn/despawn events, see papercraft_protocol.h's own doc comment) would
+                   start empty even when the real world isn't. Real inventory sync right after --
+                   a genuinely fresh spawn is really empty (spawn_player's own real reset), and a
+                   same-run reconnect's own real, still-live s->inventory is sent as-is. */
+                for (int e = 0; e < PC_ENTITY_MAX; e++) {
+                    if (g_entities[e].active) broadcast_entity_spawn_to(sock, e, s);
+                }
+                send_inventory_update(sock, s);
             } else if (hdr.type == PC_PACKET_USERCMD && (size_t)n >= sizeof(PcUserCmdPacket)) {
                 /* Real per-slot dispatch by reply address -- same convention
                    WEAKNIGHT_BEDROCK_RACERS' own server uses for its own human slot 0. */
@@ -1150,6 +1262,36 @@ int main(int argc, char **argv) {
                                     pm.message_id = (unsigned char)msg_id;
                                     sendto(sock, &pm, sizeof(pm), 0, (struct sockaddr *)&s->addr, s->addr_len);
                                 }
+
+                                /* Real, GTA3-style item drop -- PAPERCRAFT's own first real world
+                                   entity (founder real-time, 2026-08-30: "gta3 style stuff drops
+                                   and you can pick it up"). Same real trigger event xp_award_mod/
+                                   phone_mod already fire on; packages/simulation/item_drop_mod.c
+                                   (PARENA/stdlib/papercraft/item_drop_mod.prn) decides whether
+                                   this real material drops an item and which one, this host code
+                                   only finds a free real entity slot and broadcasts it -- same
+                                   "mod decides, host applies" split as both real mods above. A
+                                   real 0 (PC_ITEM_NONE) means no drop, matching every other
+                                   material this sandbox has no real item for yet. */
+                                int drop_item = on_papercraft_item_for_object_destroyed(g_wo_file.objects[target].material);
+                                if (drop_item != PC_ITEM_NONE) {
+                                    int slot_id = -1;
+                                    for (int e = 0; e < PC_ENTITY_MAX; e++) {
+                                        if (!g_entities[e].active) { slot_id = e; break; }
+                                    }
+                                    if (slot_id == -1) {
+                                        printf("Real item drop suppressed -- PC_ENTITY_MAX (%d) already full.\n", PC_ENTITY_MAX);
+                                    } else {
+                                        g_entities[slot_id].active = 1;
+                                        g_entities[slot_id].item_id = (unsigned char)drop_item;
+                                        g_entities[slot_id].x = g_wo_file.objects[target].x;
+                                        g_entities[slot_id].y = g_wo_file.objects[target].y;
+                                        g_entities[slot_id].z = g_wo_file.objects[target].z;
+                                        broadcast_entity_spawn(sock, slot_id);
+                                        printf("Real item drop -- entity %d, item_id=%d, at (%.1f,%.1f,%.1f).\n",
+                                               slot_id, drop_item, g_entities[slot_id].x, g_entities[slot_id].y, g_entities[slot_id].z);
+                                    }
+                                }
                             }
                         }
                     }
@@ -1187,6 +1329,31 @@ int main(int argc, char **argv) {
                 if (now - s->last_usercmd_ms > PC_USERCMD_STALE_MS) {
                     s->latest_move_x = 0.0f;
                     s->latest_move_z = 0.0f;
+                }
+
+                /* Real, GTA3-style walk-over pickup -- no dedicated pickup button/packet, matching
+                   the founder's own real reference ("gta3 style stuff drops and you can pick it
+                   up" -- GTA3's own real health/armor pickups work the same way). Every real
+                   active entity within g_pickup_radius (on_papercraft_pickup_radius_millis, see
+                   its own doc comment) of this player gets picked up this tick, real inventory
+                   permitting -- try_add_item_to_inventory's own real "mod decides, host applies"
+                   split covers stacking/capacity; a genuinely full real inventory leaves the real
+                   entity where it is (no silent deletion) rather than losing the item. */
+                for (int e = 0; e < PC_ENTITY_MAX; e++) {
+                    if (!g_entities[e].active) continue;
+                    float edx = s->state.x - g_entities[e].x;
+                    float edy = s->state.y - g_entities[e].y;
+                    float edz = s->state.z - g_entities[e].z;
+                    float edist2 = edx * edx + edy * edy + edz * edz;
+                    if (edist2 <= g_pickup_radius * g_pickup_radius) {
+                        if (try_add_item_to_inventory(s, g_entities[e].item_id)) {
+                            printf("Player slot %d picked up real entity %d (item_id=%d).\n",
+                                   i, e, g_entities[e].item_id);
+                            g_entities[e].active = 0;
+                            broadcast_entity_despawn(sock, e);
+                            send_inventory_update(sock, s);
+                        }
+                    }
                 }
 
                 float mx = s->latest_move_x, mz = s->latest_move_z;
