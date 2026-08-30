@@ -860,10 +860,10 @@ int main(int argc, char **argv) {
        a fraction of a second, stopped real movement input from transmitting at all until a fresh
        WELCOME landed, on top of swapping the full 3D scene out for a real full-screen "CONNECTION
        LOST" takeover. Neither reaction was ever actually necessary for an ordinary stall:
-       apps/server's own real PC_PLAYER_TIMEOUT_MS (30s) only evicts a slot after 30s of no real
-       USERCMD -- so a client that just kept sending the whole time, unconditionally, would let a
-       real transient stall self-heal the instant packets resume, with no visible interruption and
-       no real need to ever resend CONNECT at all. Real, three-tier redesign:
+       apps/server's own real PC_PLAYER_TIMEOUT_MS only evicts a slot after that many ms of no
+       real USERCMD -- so a client that just kept sending the whole time, unconditionally, would
+       let a real transient stall self-heal the instant packets resume, with no visible
+       interruption and no real need to ever resend CONNECT at all. Real, three-tier redesign:
        1. `ever_welcomed` (new, sticky, set once on the first real WELCOME, never cleared) now
           gates USERCMD/ability/interact sending, not the live, momentarily-false `welcomed` --
           real movement input keeps transmitting through any real receive-side stall, however long.
@@ -871,12 +871,19 @@ int main(int argc, char **argv) {
           on-screen indicator (see the render loop below) -- the normal 3D scene keeps rendering
           the whole time, real input keeps working, nothing flashes on and off.
        3. `PC_CLIENT_STALE_MS` -- the real, disruptive full-screen "CONNECTION LOST" takeover AND
-          an actual forced CONNECT resend -- is now a genuine last resort, raised to 20000ms
-          (close to the server's own real 30s eviction window, instead of well under it): by the
-          time a real stall is long enough to reach this tier, continuous sending (tier 1) has
-          already had a real, long chance to self-heal it on its own. */
+          an actual forced CONNECT resend -- is a genuine last resort, kept comfortably under the
+          server's own real `PC_PLAYER_TIMEOUT_MS`: by the time a real stall is long enough to
+          reach this tier, continuous sending (tier 1) has already had a real, long chance to
+          self-heal it on its own.
+
+       Real, live bump 20000 -> 45000 (2026-08-30, founder real-time, on real 5G/limited-
+       bandwidth, confirming the rest of the pipeline (login/movement/look/ping) all works: "we
+       are getting a lot of connection lost can we get it to be more forgiving for low
+       bandwidth?") -- raised in lockstep with apps/server's own PC_PLAYER_TIMEOUT_MS bump
+       (30000 -> 60000ms), keeping the same real, deliberate proportional safety margin between
+       the two (15s here). */
 #define PC_CLIENT_WEAK_MS 2000
-#define PC_CLIENT_STALE_MS 20000
+#define PC_CLIENT_STALE_MS 45000
     unsigned int last_snapshot_ms = 0;
     int reconnecting = 0;
     int ever_welcomed = 0;

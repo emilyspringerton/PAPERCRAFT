@@ -1025,6 +1025,22 @@ value exactly, real measured round trip 8ms on localhost. `bazel clean && bazel 
 bazel test //...`: 27 targets, 12/12 tests pass, unaffected. raw-`gcc` (Linux) and raw-`mingw-gcc`
 (Windows) both compile clean.
 
+**Real confirmation, same day: the founder's own real 5G play session confirmed the whole real
+pipeline works** — login, movement, mouse-look, and the real ping counter (23ms measured against
+the live production server, confirmed via a real UDP probe after the founder ran the queued
+restart) all working together for the first time. One more real ask followed immediately: "we are
+getting a lot of connection lost can we get it to be more forgiving for low bandwidth?" — the
+disruptive full-screen "CONNECTION LOST" tier (`PC_CLIENT_STALE_MS`) was still firing often on a
+genuinely low-bandwidth mobile path. Real fix: both real, coupled thresholds bumped together, kept
+proportional — `apps/server`'s own `PC_PLAYER_TIMEOUT_MS` 30000 → 60000ms, `apps/client`'s own
+`PC_CLIENT_STALE_MS` 20000 → 45000ms (still a real 15s safety margin under the server's own
+eviction window, same proportional gap as before). The short, non-disruptive
+`PC_CLIENT_WEAK_MS` (2000ms) tier is unchanged — the founder's complaint was specifically about the
+disruptive takeover, not the small corner indicator. `bazel clean && bazel build //... && bazel
+test //...`: 27 targets, 12/12 tests pass. README.md updated (the abandoned-connection feature's
+own real numbers were stale there too). Not yet confirmed against the founder's own next real play
+session as of this doc's own last edit.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled

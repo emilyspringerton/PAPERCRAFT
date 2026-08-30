@@ -35,8 +35,10 @@ Section 206 for the full session-by-session build log with commit hashes and App
 - **Real jump + a first trick.** Real gravity/jump physics, plus a construct-ported slide-jump
   speed boost (crouch + jump while moving).
 - **Real abandoned-connection handling.** A crashed/closed client's slot is freed (with a final
-  autosave) after 30s of silence; the client detects a lost connection within 5s and shows a real
-  reconnect screen instead of freezing.
+  autosave) after 60s of silence; real input keeps transmitting through any shorter stall (a
+  small, non-disruptive on-screen indicator shows after 2s), and only after 45s of no real
+  SNAPSHOT does the client show a real reconnect screen instead of freezing — tuned generous for
+  low-bandwidth/high-latency real connections, not just localhost.
 - **A real, verified modding pipeline.** See [`MODDING.md`](MODDING.md) — write a `.prn` mod,
   compile it, wire it into the host, run a server on your own machine, connect a client. Proven
   live with a brand-new mod built specifically to test the doc. `apps/server` can also load a mod

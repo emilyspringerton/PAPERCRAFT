@@ -48,21 +48,30 @@
 #define PC_TICK_DT (1.0f / (float)PC_TICK_HZ)
 #define PC_MOVE_SPEED 4.0f /* world units/sec, real walking pace */
 #define PC_USERCMD_STALE_MS 500
-#define PC_PLAYER_TIMEOUT_MS 30000 /* real, generous "genuinely abandoned" threshold -- 60x
-                                       PC_USERCMD_STALE_MS's own much shorter "stopped moving"
-                                       grace period, and comfortably longer than apps/client's own
-                                       real PC_CLIENT_STALE_MS reconnect-detection window (5s), so
-                                       a legitimate real reconnect attempt (a brief network blip,
-                                       not a genuinely closed client) always wins the race and
-                                       reclaims the same slot via the existing real
-                                       reconnect-by-player_id lookup, rather than losing it to this
-                                       timeout first. Closes a real gap this always-running,
-                                       never-ending persistent server (NORTHSTAR.md's own
-                                       "papercraft shouldnt have matches and the matches shouldnt
-                                       end") had no defense against at all: a slot claimed by a
-                                       crashed/closed client with no clean disconnect packet
-                                       (UDP has none) stayed active()==1 forever, permanently
-                                       eating one of PC_MAX_PLAYERS(16) real slots. */
+#define PC_PLAYER_TIMEOUT_MS 60000 /* real, generous "genuinely abandoned" threshold -- comfortably
+                                       longer than apps/client's own real PC_CLIENT_STALE_MS
+                                       reconnect-detection window, so a legitimate real reconnect
+                                       attempt (a brief network blip, not a genuinely closed
+                                       client) always wins the race and reclaims the same slot via
+                                       the existing real reconnect-by-player_id lookup, rather than
+                                       losing it to this timeout first. Closes a real gap this
+                                       always-running, never-ending persistent server
+                                       (NORTHSTAR.md's own "papercraft shouldnt have matches and
+                                       the matches shouldnt end") had no defense against at all: a
+                                       slot claimed by a crashed/closed client with no clean
+                                       disconnect packet (UDP has none) stayed active()==1 forever,
+                                       permanently eating one of PC_MAX_PLAYERS(16) real slots.
+
+                                       Real, live bump 30000 -> 60000 (2026-08-30, founder
+                                       real-time, on real 5G/limited-bandwidth: "we are getting a
+                                       lot of connection lost can we get it to be more forgiving
+                                       for low bandwidth?") -- doubled in lockstep with
+                                       apps/client's own PC_CLIENT_STALE_MS bump (20000 ->
+                                       45000ms), keeping the same real, deliberate proportional
+                                       safety margin between the two (the client must always give
+                                       up and stop trying comfortably before the server actually
+                                       evicts the slot, or a real reconnect attempt could lose the
+                                       race and never land). */
 #define PC_INTERACT_REACH 2.5f  /* world units in front of the player an interact request can reach */
 #define PC_INTERACT_RADIUS 1.0f /* real hit radius, matches paper_mesh_test.c's own real "shotgun blast" scenario */
 #define PC_INTERACT_DAMAGE 30   /* real damage per hit -- CONCRETE fragments (80 max HP, 50% resist) take ~3 real hits to break */
