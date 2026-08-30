@@ -1,4 +1,5 @@
 ## 2026-08-30
+- New docs/NORTHSTAR_WEB_CLIENT.md -- real scoping pass for a native TS+WebGL browser client (no Emscripten), WebRTC DataChannel bridge, no code yet (sess-20260825-1938-f6bd411e)
 - Halved snapshot broadcast bandwidth (PC_SNAPSHOT_HZ=10, decoupled from 20Hz sim tick) to reduce reconnection flashing on low-bandwidth connections; bumped PC_CLIENT_WEAK_MS; fixed a live var/players+var/world permission bug that was silently failing player autosaves (sess-20260825-1938-f6bd411e)
 - Entity + inventory system: GTA3-style item drops (PC_PACKET_ENTITY_SPAWN/DESPAWN), FFXI-style list inventory UI (PC_PACKET_INVENTORY_UPDATE), 3 new PARENA mods (item_drop/inventory/pickup), SDL_GameController support; native cc_test replacing an earlier live-probe verification (sess-20260825-1938-f6bd411e)
 - TYLER phone mechanics Phase 1: PARENA phone_mod + PC_PACKET_PHONE_MESSAGE wire protocol + client notification banner; also fixed a real spawn_player latest_cmd_seq reset bug found during live verification (sess-20260825-1938-f6bd411e)
