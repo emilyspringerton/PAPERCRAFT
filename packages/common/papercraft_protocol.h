@@ -343,6 +343,18 @@ typedef struct {
         direct index (the real fragment-to-bit mapping isn't 1:1 with the byte array anymore). */
     unsigned char falling_active[PC_FALLING_FRAGMENTS_MAX];
     PcFallingFragment falling[PC_FALLING_FRAGMENTS_MAX];
+    unsigned int echo_cmd_time_ms; /* real ping/RTT support (2026-08-30, founder real-time: "you
+        can show the ping at the top of the screen") -- ONE real field, not a real per-player
+        array (PC_MAX_PLAYERS * 4 bytes would have real wire-budget consequences worth avoiding
+        for something every OTHER real field in this struct is already shared/broadcast-identical
+        for), since a client only ever needs to know its OWN real round-trip time, never anyone
+        else's. apps/server writes a DIFFERENT real value into this exact field right before each
+        real per-recipient `sendto()` -- the recipient's own most-recently-received
+        PcUserCmdPacket::cmd_time_ms, verbatim, echoed straight back. The client that sent that
+        real cmd_time_ms computes `now_ms() - echo_cmd_time_ms` for a real, honest round-trip
+        time with zero clock-synchronization assumption at all -- both the original timestamp and
+        the later comparison happen on that SAME client's own local clock, the server never
+        touches or interprets the value, just reflects it. */
 } PcSnapshotPacket;
 
 /* pc_falling_lookup: real Phase 1b/1c logic (2026-08-29, NORTHSTAR.md's own "Real Phase 1"

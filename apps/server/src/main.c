@@ -183,6 +183,12 @@ typedef struct {
     unsigned int latest_buttons; /* real PC_BTN_* bitmask from the player's own latest UserCmd */
     unsigned int latest_cmd_seq;
     unsigned int last_usercmd_ms;
+    unsigned int latest_cmd_time_ms; /* real, verbatim copy of the client's OWN cmd_time_ms
+        (its own local clock, not this server's) -- echoed back per-recipient in
+        PcSnapshotPacket::echo_cmd_time_ms so each client can compute a real round-trip time as
+        now_ms() - echo_cmd_time_ms with no clock-sync assumption at all, since both the send and
+        the compare happen on the SAME client's own clock (see papercraft_protocol.h's own doc
+        comment on echo_cmd_time_ms for the full real reasoning). */
     int has_player_id;
     unsigned char player_id[16];
     unsigned int last_xp_tick_ms; /* real per-second cadence, mirrors the construct's own progression_tick */
@@ -949,6 +955,7 @@ int main(int argc, char **argv) {
                         s->latest_move_z = cmd.move_z;
                         s->latest_buttons = cmd.buttons;
                         s->last_usercmd_ms = now_ms();
+                        s->latest_cmd_time_ms = cmd.cmd_time_ms;
                     }
                     break;
                 }
@@ -1306,6 +1313,10 @@ int main(int argc, char **argv) {
             for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                 if (!g_slots[i].active) continue;
                 snap.hdr.client_id = (unsigned char)i;
+                /* Real, per-recipient overwrite of the one shared echo field -- see
+                   PcSnapshotPacket::echo_cmd_time_ms's own doc comment for why this is a single
+                   reused field, not a real per-player array. */
+                snap.echo_cmd_time_ms = g_slots[i].latest_cmd_time_ms;
                 sendto(sock, &snap, sizeof(snap), 0, (struct sockaddr *)&g_slots[i].addr, g_slots[i].addr_len);
             }
 

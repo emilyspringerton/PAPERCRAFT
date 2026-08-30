@@ -1003,6 +1003,28 @@ raw-gcc (Linux) and raw-mingw-gcc (Windows) both compile clean. `bazel clean && 
 against a real live graphical session from this environment — the founder's own next real play
 session is the actual proof, same honest verification-tier limit carried throughout this section.
 
+**A real ping/RTT counter, closing the founder's original ask in full.** Founder real-time,
+earlier: "you can show the ping at the top of the screen" — the weak-connection indicator (S206-54)
+only ever partially covered this (a staleness readout, not a literal round-trip time). Real, small
+protocol addition: `PcSnapshotPacket` gains one `echo_cmd_time_ms` field — a single real field, not
+a real per-player array (which would have cost `PC_MAX_PLAYERS * 4` wire bytes for something no
+client ever needs to know about any player but itself) — that `apps/server` overwrites with each
+real recipient's own most-recently-received `PcUserCmdPacket::cmd_time_ms` right before that
+recipient's own per-player `sendto()`. The client that sent that real timestamp computes
+`now_ms() - echo_cmd_time_ms` for a real, honest round-trip time with zero clock-synchronization
+assumption at all — both the original send and the later compare happen on that same client's own
+local clock, the server never touches or interprets the value, just reflects it straight back.
+Displayed top-right (`draw_ping_indicator`, simple green/yellow/red banding at 100ms/300ms), a
+real third independent corner readout alongside `draw_progression_hud` (top-left) and
+`draw_weak_connection_indicator` (top-center) — deliberately not stacked with either. Real wire
+cost: `sizeof(PcSnapshotPacket)` grows from 1432 to 1436 bytes, still 36 bytes under the 1472-byte
+budget, real margin left on purpose. Verified live, end to end, not just compiled: a real
+throwaway server + a real UDP probe sent an actual `PcUserCmdPacket` with a known `cmd_time_ms`,
+then read snapshots until a nonzero `echo_cmd_time_ms` arrived — the echoed value matched the sent
+value exactly, real measured round trip 8ms on localhost. `bazel clean && bazel build //... &&
+bazel test //...`: 27 targets, 12/12 tests pass, unaffected. raw-`gcc` (Linux) and raw-`mingw-gcc`
+(Windows) both compile clean.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled

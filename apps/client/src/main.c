@@ -572,6 +572,35 @@ static void draw_weak_connection_indicator(int win_w, int win_h, unsigned int re
     pc_draw_string(line, (float)win_w / 2.0f - 90.0f, (float)win_h - 30.0f, 8);
 }
 
+/* draw_ping_indicator -- real round-trip time, top-right corner (founder real-time: "you can show
+   the ping at the top of the screen"). ping_ms is real, not simulated -- computed by the caller as
+   now_ms() - the real echo_cmd_time_ms the server just reflected back on this exact client's own
+   most-recently-acknowledged UserCmd (see PcSnapshotPacket::echo_cmd_time_ms's own doc comment for
+   the full real round-trip mechanism, zero clock-sync assumption). Positioned top-right,
+   deliberately not stacked with draw_progression_hud (top-left) or draw_weak_connection_indicator
+   (top-center) -- three independent real readouts, three real corners, no overlap. */
+static void draw_ping_indicator(int win_w, int win_h, unsigned int ping_ms) {
+    glDisable(GL_DEPTH_TEST);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, win_w, 0, win_h, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    char line[32];
+    snprintf(line, sizeof(line), "ping %ums", ping_ms);
+    /* Real, simple traffic-light coloring -- under 100ms reads as fine on a UDP game like this
+       one, over 300ms is the real point players start to feel the lag. No existing precedent
+       elsewhere in this monorepo to match -- checked WEAKNIGHT_BEDROCK_RACERS' own client first
+       (same real UDP-game shape) and it has no ping display of its own at all; these two real
+       thresholds are a plain, standard real-time-multiplayer convention, not copied from
+       anywhere in this repo. */
+    if (ping_ms < 100) glColor3f(0.55f, 0.9f, 0.55f);
+    else if (ping_ms < 300) glColor3f(0.95f, 0.85f, 0.3f);
+    else glColor3f(0.95f, 0.4f, 0.35f);
+    pc_draw_string(line, (float)win_w - 130.0f, (float)win_h - 30.0f, 8);
+}
+
 static void draw_player_marker(float x, float y, float z, float yaw, int is_own) {
     glPushMatrix();
     glTranslatef(x, y + 0.9f, z);
@@ -1151,6 +1180,14 @@ int main(int argc, char **argv) {
                 draw_player_marker(p->x, p->y, p->z, p->yaw, i == my_slot);
             }
             draw_progression_hud(win_w, win_h, &own);
+            /* Real ping display -- guarded on echo_cmd_time_ms != 0 so nothing shows before the
+               real first round trip has actually completed (a real, honest "not measured yet"
+               state, not a fake zero/garbage reading), and on echo_cmd_time_ms <= now so a
+               once-possible-but-never-actually-seen clock oddity can't underflow the unsigned
+               subtraction into a huge, nonsensical real ping value. */
+            if (latest_snap.echo_cmd_time_ms != 0 && latest_snap.echo_cmd_time_ms <= now) {
+                draw_ping_indicator(win_w, win_h, now - latest_snap.echo_cmd_time_ms);
+            }
         }
         if (welcomed && now - last_snapshot_ms > PC_CLIENT_WEAK_MS) {
             draw_weak_connection_indicator(win_w, win_h, now - last_snapshot_ms);
