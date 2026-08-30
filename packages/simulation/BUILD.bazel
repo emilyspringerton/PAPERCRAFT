@@ -293,3 +293,42 @@ cc_test(
     srcs = ["interact_falloff_mod_test.c"],
     deps = [":interact_falloff"],
 )
+
+# parena_runtime -- the REAL, FULL PARENA runtime (Arena/Vec/String/host-glue), vendored from
+# PARENA/runtime/parena_runtime.{h,c} verbatim. Real, deliberate mod-boundary evolution (founder
+# real-time: "evolve the mod boundary"), replacing the previous deliberately-minimal 17-line
+# header-only stub every prior mod in this file compiled against (that stub's own header comment
+# named this exact moment: "grow this file for real... the moment a future mod genuinely needs
+# Arena/String/Vec/host-glue support" -- :editor below is that mod). Every PRIOR scalar-only mod
+# (:level, :phone, :item_drop, etc.) still compiles unchanged against this strictly larger header
+# -- verified directly via `bazel build //...`, not assumed backward-compatible.
+cc_library(
+    name = "parena_runtime",
+    srcs = ["parena_runtime.c"],
+    hdrs = ["parena_runtime.h"],
+    visibility = ["//visibility:public"],
+)
+
+# editor -- the real, first PARENA mod in this repo to cross the host boundary with structs and
+# Strings, not just I32 scalars (PAPERCRAFT/CLAUDE.md's own "Mods first, everything" section is
+# updated in the same commit to document this real evolution). A real, single bundle rather than
+# four separate .c files: PARENA/stdlib/editor/{buffer,document,registry}.prn and
+# PARENA/stdlib/papercraft/note_version_mod.prn have real cross-module dependencies, and this
+# monorepo's own already-documented finding (PARENA's own CHANGELOG, k8s/helm work) is that
+# cross-module calls only resolve correctly when every needed .prn file is passed to ONE real
+# `parena build` invocation together -- so editor_mod.c is that one real combined output,
+# committed here per this repo's own "generated code committed" precedent.
+cc_library(
+    name = "editor",
+    srcs = ["editor_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    deps = [":parena_runtime"],
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "editor_mod_test",
+    srcs = ["editor_mod_test.c"],
+    deps = [":editor", ":parena_runtime"],
+)

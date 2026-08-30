@@ -25,10 +25,26 @@ repo, root) is the real reference snapshot `NORTHSTAR.md`'s own citations point 
 Default assumption for any new mechanic: **it's a PARENA mod until proven otherwise.** Follow the
 exact real ABI `ECOWAR/docs/ARENA_API.md` already documents and `WEAKNIGHT_BEDROCK_RACERS`
 already proved outside ECOWAR (`racer/bike-gear-mod.prn`) — a module under
-`PARENA/stdlib/papercraft/*.prn`, real I32-only scalar decision logic, compiled via the real
-`parena build` CLI into a committed `.c` file (`packages/simulation/`), called by name from host
-C. Host C owns only what VS0 genuinely can't do yet (float physics, structs/arrays crossing the
-mod boundary).
+`PARENA/stdlib/papercraft/*.prn`, compiled via the real `parena build` CLI into a committed `.c`
+file (`packages/simulation/`), called by name from host C.
+
+**Mod-boundary evolution (2026-08-30, founder real-time: "evolve the mod boundary")**: every mod
+before this date was real I32-only scalar decision logic, with host C owning everything VS0
+couldn't do yet (float physics, structs/arrays crossing the boundary) — that's still the default
+for a genuinely simple decision (see `:level`/`:phone`/`:item_drop`/etc. in
+`packages/simulation/BUILD.bazel`). `:editor` (`PARENA/stdlib/editor/{buffer,document,registry}.prn`
++ `papercraft/note_version_mod.prn`) is the real, first mod to cross that boundary with structs
+and `String`s directly — a real document/version-management mod needs a `Buffer`'s own text, not
+just an I32 verdict. This needed `packages/simulation/parena_runtime.{h,c}` grown from its own
+prior deliberately-minimal 17-line stub to the full, real PARENA runtime (Arena/Vec/String
+support) — vendored verbatim from `PARENA/runtime/`, not reimplemented. Verified this doesn't
+regress any prior scalar-only mod: `bazel build //packages/simulation/...` and
+`bazel test //packages/simulation/...` both clean, all 14 tests (13 pre-existing + `:editor`)
+passing. Real, honest, still true: a mod crossing with a struct/String still needs a real
+`Arena *` from its caller for anything that allocates (host C now owns managing that Arena's own
+lifetime, same as any other PARENA host integration in this monorepo) — this is real added
+complexity, not free, and should still be the exception, not the new default, for a mod that
+could just be a scalar decision instead.
 
 ## Related Repos
 
