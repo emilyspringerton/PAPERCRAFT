@@ -1056,7 +1056,13 @@ int main(int argc, char **argv) {
        bandwidth?") -- raised in lockstep with apps/server's own PC_PLAYER_TIMEOUT_MS bump
        (30000 -> 60000ms), keeping the same real, deliberate proportional safety margin between
        the two (15s here). */
-#define PC_CLIENT_WEAK_MS 2000
+#define PC_CLIENT_WEAK_MS 3500 /* real, small additional bump (2026-08-30, founder real-time:
+    "papercraft is still flashing the reconnection message to me pretty frequently") -- real
+    server-side snapshot rate just halved (PC_SNAPSHOT_HZ, apps/server/src/main.c's own doc
+    comment) so the real, normal snapshot interval is now ~100ms, not ~50ms; 2000ms still gave
+    huge real margin over that, this bump is about smoothing over brief, real network jitter
+    without hiding a genuinely sustained problem (still under a tenth of PC_CLIENT_STALE_MS
+    below). */
 #define PC_CLIENT_STALE_MS 45000
 #define PC_PHONE_BANNER_MS 5000 /* real, fixed display window for draw_phone_notification */
     unsigned int last_snapshot_ms = 0;

@@ -47,6 +47,15 @@
 #define PC_SERVER_PORT 7799
 #define PC_TICK_HZ 20 /* on-foot movement doesn't need a vehicle sim's own 60Hz -- real, deliberately lower tick rate for Phase 0 */
 #define PC_TICK_DT (1.0f / (float)PC_TICK_HZ)
+#define PC_SNAPSHOT_HZ 10 /* real, deliberately DECOUPLED from PC_TICK_HZ (2026-08-30, founder
+    real-time: "papercraft is still flashing the reconnection message to me pretty frequently"
+    -- found live: the server was broadcasting a full 1436-byte PcSnapshotPacket to every player
+    20 times/sec (~29KB/s per client), real, meaningful bandwidth pressure on a constrained
+    connection (matches the founder's own earlier-described low-bandwidth 5G situation, S206-59).
+    Real fix: simulate at the full PC_TICK_HZ (movement/physics/gravity/falling-fragment
+    integration all stay real-time responsive, unaffected below), but only BUILD and SEND the
+    real snapshot broadcast every (PC_TICK_HZ / PC_SNAPSHOT_HZ) ticks -- halving real client
+    bandwidth without touching simulation fidelity at all. Must evenly divide PC_TICK_HZ. */
 #define PC_MOVE_SPEED 4.0f /* world units/sec, real walking pace */
 #define PC_USERCMD_STALE_MS 500
 #define PC_PLAYER_TIMEOUT_MS 60000 /* real, generous "genuinely abandoned" threshold -- comfortably
@@ -1499,7 +1508,10 @@ int main(int argc, char **argv) {
                    physics already uses. */
             }
 
-            /* Real snapshot broadcast to every active real player. */
+            /* Real snapshot broadcast to every active real player -- rate-limited to
+               PC_SNAPSHOT_HZ, decoupled from the full PC_TICK_HZ simulation rate above (see
+               PC_SNAPSHOT_HZ's own doc comment for the real, live bandwidth reasoning). */
+            if (server_tick % (PC_TICK_HZ / PC_SNAPSHOT_HZ) == 0) {
             PcSnapshotPacket snap;
             memset(&snap, 0, sizeof(snap));
             snap.hdr.type = PC_PACKET_SNAPSHOT;
@@ -1542,6 +1554,7 @@ int main(int argc, char **argv) {
                    reused field, not a real per-player array. */
                 snap.echo_cmd_time_ms = g_slots[i].latest_cmd_time_ms;
                 sendto(sock, &snap, sizeof(snap), 0, (struct sockaddr *)&g_slots[i].addr, g_slots[i].addr_len);
+            }
             }
 
             if (server_tick % (PC_TICK_HZ * 2) == 0 && g_slots[0].active) {
