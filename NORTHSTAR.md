@@ -1041,6 +1041,55 @@ test //...`: 27 targets, 12/12 tests pass. README.md updated (the abandoned-conn
 own real numbers were stale there too). Not yet confirmed against the founder's own next real play
 session as of this doc's own last edit.
 
+## Real TYLER phone mechanics, Phase 1 slice (2026-08-30)
+
+Founder real-time: "can we build the tyler phone mechanics into papercraft as PARENA mod api
+first development using the document in TYLER/engine/tyler_phone_mechanics.md". Real, bounded
+first slice of that spec's own 5-phase "in-game smartphone system" design (Messages, Contacts,
+Map, Camera, Notes) — only Phase 1 (Messages app + notification banner) is built, and only for
+the one real trigger event this repo already has wired: fully destroying a Paper Engine world
+object (the same real event `xp_award_mod.prn` hooks).
+
+**Real ABI, mods first everything:** `PARENA/stdlib/papercraft/phone_mod.prn` exports
+`on-papercraft-phone-message-for-event(event-type : I32) : I32` — VS0-scalar decision logic only,
+returning a real message_id (0 = no notification). Compiled via `parena build` into
+`packages/simulation/phone_mod.c`, called directly from `apps/server/src/main.c` at the exact
+same call site `on_papercraft_xp_for_object_destroyed` already fires from.
+
+**Real, deliberate wire-format departure:** the source spec's own `PacketPhoneEvent` is a JSON
+payload (designed for SHANKPIT's own Go server). This repo's own established convention
+throughout is fixed-size binary structs, not JSON-over-UDP (and VS0 can't produce a JSON string
+regardless) — so the real wire shape is `PcPhoneMessagePacket` (`PC_PACKET_PHONE_MESSAGE = 7`,
+`packages/common/papercraft_protocol.h`), a 12-byte header+message_id struct, well inside the
+1472-byte UDP MTU budget (confirmed `sizeof(PcSnapshotPacket)` unaffected at 1436 bytes). Both
+server and client hold an identical, hardcoded `message_id -> {handle, text}` table
+(`PC_PHONE_MESSAGE_TABLE`, `apps/client/src/main.c`) — same "client independently regenerates
+identical content from a shared id" convention this repo's world-object system already uses.
+
+**Real client UX:** a bottom-center notification banner (`draw_phone_notification`), shown for a
+fixed 5-second window, matching the existing top-corner ping/weak-connection HUD discipline
+established during the founder's own first live play session (2026-08-29) — never blocks input,
+never takes over the screen.
+
+**Explicitly deferred, per the spec's own phased design:** Contacts, Map, Camera, Notes apps; any
+real in-game phone UI a player opens and browses; any event type beyond object-destroyed; any
+`mod_registry_lookup` dynamic-loading variant of this mod (xp_award_mod's own real dlopen/dlsym
+proof of concept is not replicated here — a real, separate, later follow-up if this mod ever
+needs it).
+
+Verified: `bazel build //...` (29 targets), `bazel test //...` (13/13 pass, including new
+`phone_mod_test`), native gcc syntax-check of both `apps/server/src/main.c` and
+`apps/client/src/main.c` clean. Windows cross-compile of `apps/client` is unaffected (no new
+source file added to that build — `on_papercraft_phone_message_for_event` is a server-only call
+site), left to real CI to confirm as usual. Also live-verified against a real, isolated
+scratch-port server instance (a real UDP probe minting its own valid ticket, never touching the
+live production instance) — see `MODDING.md`'s own "Second worked example" writeup for the full,
+honest result (the real dispatch fires correctly; full single-object destruction wasn't reached
+inside the session's own time budget due to a real, pre-existing `paper_mesh.h` jitter-coverage
+property, not a bug in this feature) and for the real, separate `spawn_player` bug this probe work
+found and fixed along the way (a freed slot's own stale `latest_cmd_seq` could silently drop a new
+occupant's real movement packets).
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled

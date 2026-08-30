@@ -601,6 +601,44 @@ static void draw_ping_indicator(int win_w, int win_h, unsigned int ping_ms) {
     pc_draw_string(line, (float)win_w - 130.0f, (float)win_h - 30.0f, 8);
 }
 
+/* PC_PHONE_MESSAGE_TABLE -- real, hardcoded handle+text lookup keyed by message_id, must match
+   packages/common/papercraft_protocol.h's own PC_PHONE_MESSAGE_* values byte-for-byte (see
+   PcPhoneMessagePacket's own doc comment for why this is a shared table instead of the source
+   spec's own JSON payload). Index 0 is never actually sent over the wire (reserved for "no
+   notification") but is kept here so a stray/corrupt message_id degrades to an empty string
+   instead of an out-of-bounds read. */
+typedef struct { const char *handle; const char *text; } PcPhoneMessage;
+static const PcPhoneMessage PC_PHONE_MESSAGE_TABLE[] = {
+    { "", "" },                                    /* 0: unused */
+    { "SUIT", "you felt that one, didn't you?" },  /* 1: PC_PHONE_MESSAGE_OBJECT_DESTROYED */
+};
+#define PC_PHONE_MESSAGE_TABLE_COUNT (sizeof(PC_PHONE_MESSAGE_TABLE) / sizeof(PC_PHONE_MESSAGE_TABLE[0]))
+
+/* draw_phone_notification -- real, small, non-disruptive top-of-screen banner for
+   TYLER/engine/tyler_phone_mechanics.md's own Phase 1 (Messages app + notification banner only;
+   Contacts/Map/Camera/Notes and any real in-game phone UI are explicitly later phases, not
+   attempted here). Same real "overlay on top of the still-rendering 3D scene" discipline as
+   draw_weak_connection_indicator/draw_ping_indicator -- shown for PC_PHONE_BANNER_MS after a real
+   PC_PACKET_PHONE_MESSAGE arrives, then the caller clears msg_id back to 0 and this stops
+   drawing. Positioned bottom-center, deliberately not stacked with any of the three top-corner/
+   top-center HUD elements already established. */
+static void draw_phone_notification(int win_w, int win_h, unsigned char msg_id) {
+    if (msg_id == 0 || msg_id >= PC_PHONE_MESSAGE_TABLE_COUNT) return;
+
+    glDisable(GL_DEPTH_TEST);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, win_w, 0, win_h, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    const PcPhoneMessage *msg = &PC_PHONE_MESSAGE_TABLE[msg_id];
+    char line[96];
+    snprintf(line, sizeof(line), "[%s]: %s", msg->handle, msg->text);
+    glColor3f(0.55f, 0.8f, 0.95f);
+    pc_draw_string(line, (float)win_w / 2.0f - 150.0f, 40.0f, 8);
+}
+
 static void draw_player_marker(float x, float y, float z, float yaw, int is_own) {
     glPushMatrix();
     glTranslatef(x, y + 0.9f, z);
@@ -837,6 +875,14 @@ int main(int argc, char **argv) {
 
     PcSnapshotPacket latest_snap; memset(&latest_snap, 0, sizeof(latest_snap));
     int welcomed = 0;
+
+    /* Real phone-notification banner state -- TYLER/engine/tyler_phone_mechanics.md's own Phase 1
+       (Messages app + notification banner only). phone_msg_id 0 means "nothing to show"; a real,
+       non-zero PC_PACKET_PHONE_MESSAGE arrival sets both fields, and draw_phone_notification below
+       clears phone_msg_id back to 0 once PC_PHONE_BANNER_MS has elapsed -- same timed-banner shape
+       as draw_weak_connection_indicator's own real gap readout, just latched instead of live. */
+    unsigned char phone_msg_id = 0;
+    unsigned int phone_msg_shown_ms = 0;
     int have_snapshot = 0;
     int my_slot = 0;
     unsigned int last_connect_retry_ms = now_ms();
@@ -884,6 +930,7 @@ int main(int argc, char **argv) {
        the two (15s here). */
 #define PC_CLIENT_WEAK_MS 2000
 #define PC_CLIENT_STALE_MS 45000
+#define PC_PHONE_BANNER_MS 5000 /* real, fixed display window for draw_phone_notification */
     unsigned int last_snapshot_ms = 0;
     int reconnecting = 0;
     int ever_welcomed = 0;
@@ -989,6 +1036,11 @@ int main(int argc, char **argv) {
                 memcpy(&latest_snap, buf, sizeof(latest_snap));
                 have_snapshot = 1;
                 last_snapshot_ms = now_ms();
+            } else if (hdr.type == PC_PACKET_PHONE_MESSAGE && (size_t)n >= sizeof(PcPhoneMessagePacket)) {
+                PcPhoneMessagePacket pm; memcpy(&pm, buf, sizeof(pm));
+                phone_msg_id = pm.message_id;
+                phone_msg_shown_ms = now_ms();
+                printf("Phone notification received -- message_id %u.\n", pm.message_id);
             }
         }
 
@@ -1198,6 +1250,13 @@ int main(int argc, char **argv) {
         }
         if (welcomed && now - last_snapshot_ms > PC_CLIENT_WEAK_MS) {
             draw_weak_connection_indicator(win_w, win_h, now - last_snapshot_ms);
+        }
+        if (phone_msg_id != 0) {
+            if (now - phone_msg_shown_ms > PC_PHONE_BANNER_MS) {
+                phone_msg_id = 0; /* real, timed clear -- see draw_phone_notification's own doc comment */
+            } else {
+                draw_phone_notification(win_w, win_h, phone_msg_id);
+            }
         }
 
         SDL_GL_SwapWindow(win);

@@ -190,6 +190,27 @@ cc_binary(
 # output entirely -- exactly what `alwayslink = True` on :xp_award above is the real, standard
 # Bazel fix for. A plain `bazel build //...` (no special flags) is enough.
 
+# phone -- the real, PARENA-compiled phone-notification decision, PAPERCRAFT's own first real
+# slice of TYLER/engine/tyler_phone_mechanics.md's "in-game smartphone system" spec (Phase 1
+# only: Messages app + notification banner). Generated from
+# PARENA/stdlib/papercraft/phone_mod.prn via `parena build`, committed here.
+cc_library(
+    name = "phone",
+    srcs = ["phone_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    # alwayslink: same real reason as :xp_award above -- apps/server's own static link needs
+    # on_papercraft_phone_message_for_event to survive even though nothing else in this library
+    # references it directly.
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "phone_mod_test",
+    srcs = ["phone_mod_test.c"],
+    deps = [":phone"],
+)
+
 # interact_falloff -- the real, PARENA-compiled interact damage falloff-by-distance decision,
 # closing paper_mesh.h's own honestly-deferred gap ("uniform per-fragment for this first real
 # pass; falloff by distance is real, later tuning"). Composes with :paper_fragment (material

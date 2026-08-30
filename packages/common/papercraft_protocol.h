@@ -24,6 +24,7 @@
 #define PC_PACKET_REJECT           4
 #define PC_PACKET_ALLOCATE_TALENT  5
 #define PC_PACKET_INTERACT         6
+#define PC_PACKET_PHONE_MESSAGE    7
 
 /* Connect-ticket auth -- direct port of racer_protocol.h's own RC_TICKET_* wire format. Minted
  * by IDUNA's PapercraftTicketHandler (internal/http/handlers/papercraft_ticket.go) from a real
@@ -131,6 +132,32 @@ typedef struct {
 typedef struct {
     PcHeader hdr;
 } PcInteractPacket;
+
+/* PcPhoneMessagePacket -- PAPERCRAFT's own first real slice of
+ * TYLER/engine/tyler_phone_mechanics.md's "in-game smartphone system" spec (Phase 1 only:
+ * Messages app + notification banner, per that doc's own phased design). The real DECISION (does
+ * this event produce a phone notification, and which one?) is PARENA's own -- see
+ * apps/server/src/main.c's own real call into on_papercraft_phone_message_for_event
+ * (packages/simulation/phone_mod.c) for the actual gate.
+ *
+ * Deliberate departure from the source spec: tyler_phone_mechanics.md's own wire format is a
+ * JSON PacketPhoneEvent payload (`{type, handle, text, meta}`), designed for SHANKPIT's own Go
+ * server. This repo's own established convention throughout is fixed-size binary structs, not
+ * JSON-over-UDP (matching every other Pc*Packet here), and VS0 is I32-scalar-only so the mod
+ * itself can't produce a JSON string regardless -- so the real wire shape is just one
+ * message_id byte. Both apps/server and apps/client hold an identical, real, hardcoded
+ * handle+text lookup table keyed by message_id (same "client independently regenerates
+ * identical content from a shared id" convention this repo's own world-object system already
+ * uses) -- see apps/client/src/main.c's own PC_PHONE_MESSAGE_TABLE. message_id 0 is reserved
+ * for "no notification" and is never actually sent over the wire. */
+#define PC_PHONE_EVENT_OBJECT_DESTROYED 1 /* must match phone_mod.prn's own event-object-destroyed */
+
+#define PC_PHONE_MESSAGE_OBJECT_DESTROYED 1 /* must match phone_mod.prn's own message-object-destroyed */
+
+typedef struct {
+    PcHeader hdr;
+    unsigned char message_id; /* PC_PHONE_MESSAGE_*, never 0 */
+} PcPhoneMessagePacket;
 
 /* PC_DEFAULT_OBJECT_*: the real, original world-positioned Paper Engine destructible prop this
  * session first proved the whole real pipeline with (subdivide+jitter generation, real

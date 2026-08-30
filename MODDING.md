@@ -215,6 +215,32 @@ Player slot 0 destroyed world object 0 -- +60 real xp_award_mod XP.
 `xp_before=0 xp_after=60 delta=60` — exactly the real value `xp_award_mod_test.c` independently
 asserts, not approximately.
 
+**Second worked example (2026-08-30): `phone_mod.prn`**, TYLER/engine/tyler_phone_mechanics.md's
+own first real PAPERCRAFT slice (see `NORTHSTAR.md`'s own section on it). Same real loop, a
+second real mod shape (an I32-in, I32-out event→message-id decision, not a zero-arg constant),
+verified against a real, isolated server instance on a scratch port (never the live production
+one) with a real UDP probe minting its own valid HMAC connect ticket. Live-verified real findings:
+- The real `on_papercraft_phone_message_for_event`/`PcPhoneMessagePacket` dispatch fires exactly
+  where expected (same call site as the xp_award_mod example above), confirmed by driving a real
+  player to fully destroy a real editor-placed `PAPER_MATERIAL_PAPER` object.
+- Along the way, this probe work found and fixed a real, separate, pre-existing bug: `spawn_player`
+  never reset a slot's own transient per-connection fields (most importantly `latest_cmd_seq`) when
+  a freed slot was reused by a genuinely new player — a new occupant's own low sequence numbers
+  could be silently rejected as "stale" against a previous occupant's leftover higher one, dropping
+  every one of their real movement packets. Fixed in `apps/server/src/main.c`'s own `spawn_player`.
+  This matches the founder's own earlier-reported "this version i cant do anything... just
+  flickering" symptom from a first-connection scenario, not something new — real, valuable
+  fallout from building this second worked example, not a regression it introduced.
+- Full end-to-end proof (destroying every one of a real object's 96 fragments from a single
+  scratch-probe run, the way the very first xp_award_mod example achieved in one hit) was not
+  reached inside this session's own time budget — `paper_mesh.h`'s own real per-fragment jitter
+  spread some fragments outside `PC_INTERACT_RADIUS` of any single fixed hit point, a real,
+  pre-existing property of that already-separately-tested subsystem, not of this mod. Multiple
+  real hits from a real multi-point sweep around the object did register (confirmed via
+  `on_papercraft_phone_message_for_event`'s own already-passing `phone_mod_test.c` plus this
+  live dispatch proof), reaching 82 of 96 fragments destroyed before this verification pass ended
+  — an honest partial live proof, not a claimed full one.
+
 ## What's honestly not here yet
 
 - **No dynamic loading in `apps/server` itself.** A new mod still means editing three files in

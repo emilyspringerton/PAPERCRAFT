@@ -221,6 +221,7 @@ int on_papercraft_can_allocate_talent(int ability_value, int unspent_points);
 int on_papercraft_move_speed_boost_permille(int move_rank);
 int on_papercraft_slide_jump_boost_permille(int speed_milli);
 int on_papercraft_xp_for_object_destroyed(void);
+int on_papercraft_phone_message_for_event(int event_type);
 
 /* I32Fn0 -- real function-pointer shape for a dynamically-loaded, zero-arg I32-returning mod
    function, same real shape apps/dynmod_poc's own I32Fn0 already proved dlopen/dlsym-compatible.
@@ -551,6 +552,31 @@ static int fetch_city_world(const char *worldapi_host, int worldapi_port) {
    read failure (missing/corrupt) -- not a hardcoded Y either way. */
 static void spawn_player(PlayerSlot *s) {
     memset(&s->state, 0, sizeof(s->state));
+
+    /* Real, live bug found and fixed during TYLER-phone-mechanics live verification (2026-08-30):
+       g_slots[] is a static array reused across occupants (a timed-out or gracefully-freed slot
+       gets claimed by the next CONNECT), but nothing was resetting the previous occupant's own
+       transient per-connection wire state -- most critically latest_cmd_seq. Every real client
+       starts its own cmd_sequence counter at a low number (this repo's own apps/client included),
+       so a freshly-spawned player landing on a slot whose PREVIOUS occupant had already sent, say,
+       300 UserCmds would have every one of their own real movement packets silently dropped by
+       the `cmd.cmd_sequence >= s->latest_cmd_seq` staleness check below, until their own counter
+       organically climbed back past that stale leftover value -- a real player who could
+       apparently look() but not move() at all, matching this repo's own founder-reported "this
+       version i cant do anything" symptom from exactly this kind of first-connection scenario.
+       Real fix: this is the one real place a slot's own new occupancy begins (only reached from
+       the CONNECT handler's own `if (!s->active)` fresh-claim branch), so this is the correct,
+       single place to zero every transient field a stale previous occupant could have left
+       behind, not just s->state above. */
+    s->latest_move_x = 0.0f;
+    s->latest_move_z = 0.0f;
+    s->latest_buttons = 0;
+    s->latest_cmd_seq = 0;
+    s->latest_cmd_time_ms = 0;
+    s->was_holding_jump = 0;
+    s->speed_boost_permille = 0;
+    s->speed_boost_until_ms = 0;
+    s->last_xp_tick_ms = 0;
 
     if (s->has_player_id) {
         PcSaveRecord rec;
@@ -1102,6 +1128,28 @@ int main(int argc, char **argv) {
                                 award_xp(s, reward, i);
                                 printf("Player slot %d destroyed world object %d -- +%d real xp_award_mod XP (%s).\n",
                                        i, target, reward, source);
+
+                                /* Real, first slice of TYLER/engine/tyler_phone_mechanics.md's
+                                   "in-game smartphone system" spec (Phase 1: Messages app +
+                                   notification banner only). Same real trigger event xp_award_mod
+                                   already fires on -- packages/simulation/phone_mod.c
+                                   (PARENA/stdlib/papercraft/phone_mod.prn) decides whether this
+                                   event produces a notification and which message_id, this host
+                                   code only applies it: a real PcPhoneMessagePacket sent once to
+                                   the destroying player, same "mod decides, host applies" split
+                                   as the XP award just above. Not run through mod_registry_lookup
+                                   -- no dynamically-loaded variant of this mod exists yet, unlike
+                                   xp_award_mod's own real dlopen/dlsym proof of concept -- a real,
+                                   separate, later follow-up if this mod ever needs that. */
+                                int msg_id = on_papercraft_phone_message_for_event(PC_PHONE_EVENT_OBJECT_DESTROYED);
+                                if (msg_id != 0) {
+                                    PcPhoneMessagePacket pm;
+                                    memset(&pm, 0, sizeof(pm));
+                                    pm.hdr.type = PC_PACKET_PHONE_MESSAGE;
+                                    pm.hdr.client_id = (unsigned char)i;
+                                    pm.message_id = (unsigned char)msg_id;
+                                    sendto(sock, &pm, sizeof(pm), 0, (struct sockaddr *)&s->addr, s->addr_len);
+                                }
                             }
                         }
                     }
