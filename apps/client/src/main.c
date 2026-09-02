@@ -290,6 +290,80 @@ static int run_login_screen(SDL_Window *win, int win_w, int win_h,
     return ok;
 }
 
+/* ---------------- Cel-shading (S231, 2026-09-02, founder real-time: "update the graphics to
+   cellshading similar to REDGARDEN") ----------------
+   REDGARDEN's own cel-shading (apps/arena/src/main.c, S180-09) runs a real GLSL fragment shader
+   that quantizes N.L into 3 discrete bands (>0.75 -> full, >0.35 -> mid, else -> dark) instead of
+   a smooth gradient -- that quantization is the entire visual difference between "flat-shaded
+   primitive" and "cel-shaded" look, per that repo's own doc comment. This client is deliberately
+   legacy fixed-function OpenGL (glBegin/glVertex, see this file's own header comment above) with
+   no shader pipeline, VAOs, or per-vertex normal arrays -- porting a real GLSL program over isn't
+   a same-scope change here. What ports directly is the *technique*: do the identical banding in
+   C, per face, right before each face's glColor3f/glColor4f call. Same band thresholds, same
+   general fixed-light-direction idea REDGARDEN uses. Zero new GL state, zero new geometry. */
+#define PC_CEL_LIGHT_X 0.4f
+#define PC_CEL_LIGHT_Y 1.0f
+#define PC_CEL_LIGHT_Z 0.3f
+
+/* Sets the current GL color to `base` quantized by this face's own normal against the fixed
+   light direction above -- same 3-band split REDGARDEN's FS_SRC uses. `nx,ny,nz` need not be
+   pre-normalized. A degenerate (near-zero) normal falls back to the unlit base color rather than
+   dividing by ~0. */
+static void cel_color3f(float base_r, float base_g, float base_b, float nx, float ny, float nz) {
+    float light_len = sqrtf(PC_CEL_LIGHT_X * PC_CEL_LIGHT_X + PC_CEL_LIGHT_Y * PC_CEL_LIGHT_Y + PC_CEL_LIGHT_Z * PC_CEL_LIGHT_Z);
+    float lx = PC_CEL_LIGHT_X / light_len, ly = PC_CEL_LIGHT_Y / light_len, lz = PC_CEL_LIGHT_Z / light_len;
+    float nlen = sqrtf(nx * nx + ny * ny + nz * nz);
+    if (nlen < 0.0001f) { glColor3f(base_r, base_g, base_b); return; }
+    float ux = nx / nlen, uy = ny / nlen, uz = nz / nlen;
+    float diff = ux * lx + uy * ly + uz * lz;
+    if (diff < 0.0f) diff = 0.0f;
+    float band = (diff > 0.75f) ? 1.0f : (diff > 0.35f) ? 0.65f : 0.35f;
+    glColor3f(base_r * band, base_g * band, base_b * band);
+}
+
+/* Same banding, alpha-preserving variant for blended draws (debris fade). */
+static void cel_color4f(float base_r, float base_g, float base_b, float a, float nx, float ny, float nz) {
+    float light_len = sqrtf(PC_CEL_LIGHT_X * PC_CEL_LIGHT_X + PC_CEL_LIGHT_Y * PC_CEL_LIGHT_Y + PC_CEL_LIGHT_Z * PC_CEL_LIGHT_Z);
+    float lx = PC_CEL_LIGHT_X / light_len, ly = PC_CEL_LIGHT_Y / light_len, lz = PC_CEL_LIGHT_Z / light_len;
+    float nlen = sqrtf(nx * nx + ny * ny + nz * nz);
+    if (nlen < 0.0001f) { glColor4f(base_r, base_g, base_b, a); return; }
+    float ux = nx / nlen, uy = ny / nlen, uz = nz / nlen;
+    float diff = ux * lx + uy * ly + uz * lz;
+    if (diff < 0.0f) diff = 0.0f;
+    float band = (diff > 0.75f) ? 1.0f : (diff > 0.35f) ? 0.65f : 0.35f;
+    glColor4f(base_r * band, base_g * band, base_b * band, a);
+}
+
+/* Real face normal via cross product of two edges -- used for Paper Engine fragment quads, which
+   (unlike the axis-aligned city/player boxes below, whose face normals are known analytically)
+   are jittered slightly off-planar (paper_mesh.h's own "jitter along the face normal" texture),
+   so a normal computed from the actual current corner positions reads correctly even after
+   jitter, rather than assuming the pre-jitter face axis. */
+static void cel_normal_from_quad(const PaperVec3 *c, float *nx, float *ny, float *nz) {
+    float e1x = c[1].x - c[0].x, e1y = c[1].y - c[0].y, e1z = c[1].z - c[0].z;
+    float e2x = c[2].x - c[0].x, e2y = c[2].y - c[0].y, e2z = c[2].z - c[0].z;
+    *nx = e1y * e2z - e1z * e2y;
+    *ny = e1z * e2x - e1x * e2z;
+    *nz = e1x * e2y - e1y * e2x;
+}
+
+/* ---------------- Outline pass (S231) ----------------
+   REDGARDEN's own outline (VS_OUTLINE_SRC/FS_OUTLINE_SRC) expands each vertex outward along its
+   real per-vertex normal by a small world-space amount and draws back-facing-only in solid near-
+   black BEFORE the real cel-shaded draw -- the classic Wind Waker "inverted hull" technique. This
+   client has no per-vertex normal buffers to expand along, but every real Paper Engine fragment
+   and the player marker box are built from real corners already centered on their own local
+   origin (paper_generate_box's own `px * half_x` etc, and draw_player_marker's own hw/hh/hl box
+   both span -half..+half around (0,0,0) before any translate) -- scaling those local corners by a
+   small factor > 1.0 from that shared origin pushes each one outward along its own approximate
+   face normal, the same real effect for a box shape with much less machinery. Applied only to
+   these two hero-scale object kinds, not the whole city grid, matching REDGARDEN's own explicit
+   scoping ("per hero-box primitive... not a whole... screen-space post-process"). */
+#define PC_OUTLINE_SCALE 1.06f
+#define PC_OUTLINE_R 0.03f
+#define PC_OUTLINE_G 0.03f
+#define PC_OUTLINE_B 0.04f
+
 /* draw_city_world: real, simple per-block cube render across the real, fixed multi-chunk grid
    (packages/common/papercraft_world.h's own PwWorld) -- every block in every real, loaded chunk
    this same client fetched at startup (the same real block data apps/server itself spawns players
@@ -301,7 +375,11 @@ static int run_login_screen(SDL_Window *win, int win_w, int win_h,
    revisit with real face-culling/greedy-meshing once chunk count or scene complexity actually
    makes it matter (matches this repo's own standing "optimize later, not preemptively" call). */
 static void draw_city_world(const PwWorld *world) {
-    glColor3f(0.55f, 0.55f, 0.58f); /* real concrete grey, matches worldapi's own "flat concrete city blocks" description */
+    /* S231: per-face banded color instead of one flat glColor3f for the whole grid -- each of the
+       6 axis-aligned face normals is known analytically (top/bottom/front/back/left/right), so
+       cel_color3f is called once per face with that face's own real normal, no cross-product
+       needed here (unlike the jittered Paper Engine fragments below). */
+    const float CR = 0.55f, CG = 0.55f, CB = 0.58f; /* real concrete grey, matches worldapi's own "flat concrete city blocks" description */
     glBegin(GL_QUADS);
     for (int cz = -PW_GRID_RADIUS; cz <= PW_GRID_RADIUS; cz++) {
         for (int cx = -PW_GRID_RADIUS; cx <= PW_GRID_RADIUS; cx++) {
@@ -314,16 +392,22 @@ static void draw_city_world(const PwWorld *world) {
                 float y0 = (float)chunk->blocks[i].y, y1 = y0 + 1.0f;
                 float z0 = oz + (float)chunk->blocks[i].z, z1 = z0 + 1.0f;
                 /* top */
+                cel_color3f(CR, CG, CB, 0.0f, 1.0f, 0.0f);
                 glVertex3f(x0, y1, z0); glVertex3f(x1, y1, z0); glVertex3f(x1, y1, z1); glVertex3f(x0, y1, z1);
                 /* bottom */
+                cel_color3f(CR, CG, CB, 0.0f, -1.0f, 0.0f);
                 glVertex3f(x0, y0, z0); glVertex3f(x0, y0, z1); glVertex3f(x1, y0, z1); glVertex3f(x1, y0, z0);
                 /* front (+z) */
+                cel_color3f(CR, CG, CB, 0.0f, 0.0f, 1.0f);
                 glVertex3f(x0, y0, z1); glVertex3f(x0, y1, z1); glVertex3f(x1, y1, z1); glVertex3f(x1, y0, z1);
                 /* back (-z) */
+                cel_color3f(CR, CG, CB, 0.0f, 0.0f, -1.0f);
                 glVertex3f(x0, y0, z0); glVertex3f(x1, y0, z0); glVertex3f(x1, y1, z0); glVertex3f(x0, y1, z0);
                 /* left (-x) */
+                cel_color3f(CR, CG, CB, -1.0f, 0.0f, 0.0f);
                 glVertex3f(x0, y0, z0); glVertex3f(x0, y1, z0); glVertex3f(x0, y1, z1); glVertex3f(x0, y0, z1);
                 /* right (+x) */
+                cel_color3f(CR, CG, CB, 1.0f, 0.0f, 0.0f);
                 glVertex3f(x1, y0, z0); glVertex3f(x1, y0, z1); glVertex3f(x1, y1, z1); glVertex3f(x1, y1, z0);
             }
         }
@@ -336,15 +420,42 @@ static void draw_city_world(const PwWorld *world) {
    independently-regenerated, byte-identical local geometry), translated to the cube's own real
    world position. Real damage tiers get a real, visibly different tint -- cracked/torn fragments
    read as damaged, not just present-or-absent. */
+/* S231: outline pre-pass for a Paper Engine prop -- see the file's own "Outline pass" doc comment
+   above for the real technique (scale each fragment's own local corners outward from the object's
+   shared local origin, draw solid near-black with front faces culled, so only the expanded
+   back-facing shell shows as a silhouette line). Drawn once per draw_test_cube call, before the
+   real cel-shaded fragments. GONE fragments are skipped here too -- no outline for a piece that
+   isn't there. */
+static void draw_test_cube_outline(const PaperCubeMesh *mesh, const unsigned char *state, float wx, float wy, float wz) {
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+    glColor3f(PC_OUTLINE_R, PC_OUTLINE_G, PC_OUTLINE_B);
+    glBegin(GL_QUADS);
+    for (int i = 0; i < mesh->fragment_count; i++) {
+        if (state[i] == PAPER_STATE_GONE) continue;
+        const PaperFragment *f = &mesh->fragments[i];
+        for (int c = 0; c < 4; c++) {
+            glVertex3f(wx + f->corners[c].x * PC_OUTLINE_SCALE,
+                       wy + f->corners[c].y * PC_OUTLINE_SCALE,
+                       wz + f->corners[c].z * PC_OUTLINE_SCALE);
+        }
+    }
+    glEnd();
+    glDisable(GL_CULL_FACE);
+}
+
 static void draw_test_cube(const PaperCubeMesh *mesh, const unsigned char *state, float wx, float wy, float wz) {
+    draw_test_cube_outline(mesh, state, wx, wy, wz);
     glBegin(GL_QUADS);
     for (int i = 0; i < mesh->fragment_count; i++) {
         unsigned char st = state[i];
         if (st == PAPER_STATE_GONE) continue;
-        if (st == PAPER_STATE_TORN) glColor3f(0.45f, 0.3f, 0.25f);
-        else if (st == PAPER_STATE_CRACKED) glColor3f(0.55f, 0.5f, 0.45f);
-        else glColor3f(0.62f, 0.6f, 0.58f); /* INTACT -- real concrete grey, slightly lighter than the city's own so the prop reads as a distinct object */
         const PaperFragment *f = &mesh->fragments[i];
+        float nx, ny, nz;
+        cel_normal_from_quad(f->corners, &nx, &ny, &nz);
+        if (st == PAPER_STATE_TORN) cel_color3f(0.45f, 0.3f, 0.25f, nx, ny, nz);
+        else if (st == PAPER_STATE_CRACKED) cel_color3f(0.55f, 0.5f, 0.45f, nx, ny, nz);
+        else cel_color3f(0.62f, 0.6f, 0.58f, nx, ny, nz); /* INTACT -- real concrete grey, slightly lighter than the city's own so the prop reads as a distinct object */
         for (int c = 0; c < 4; c++) {
             glVertex3f(wx + f->corners[c].x, wy + f->corners[c].y, wz + f->corners[c].z);
         }
@@ -488,11 +599,6 @@ static void update_and_draw_debris(PcDebrisPiece *pool, const PcSnapshotPacket *
         float fade_start = PC_DEBRIS_LIFETIME_S - 0.5f;
         if (d->age > fade_start) fade = (PC_DEBRIS_LIFETIME_S - d->age) / 0.5f;
 
-        if (d->material == PAPER_MATERIAL_WOOD) glColor4f(0.35f, 0.22f, 0.15f, fade);
-        else if (d->material == PAPER_MATERIAL_METAL) glColor4f(0.5f, 0.5f, 0.55f, fade);
-        else if (d->material == PAPER_MATERIAL_PAPER) glColor4f(0.8f, 0.78f, 0.7f, fade);
-        else glColor4f(0.4f, 0.38f, 0.35f, fade); /* CONCRETE -- a real, slightly darker tint than an intact fragment's own, reads as broken debris */
-
         float rx[4], rz[4];
         if (has_real_match && real_match.rotation_deg != 0.0f) {
             float cx = 0.0f, cz = 0.0f;
@@ -509,6 +615,19 @@ static void update_and_draw_debris(PcDebrisPiece *pool, const PcSnapshotPacket *
         } else {
             for (int c = 0; c < 4; c++) { rx[c] = d->local_corners[c].x; rz[c] = d->local_corners[c].z; }
         }
+
+        /* S231: banded color from this piece's own actual current-frame corner positions (post-
+           rotation), same cel_normal_from_quad cross-product technique draw_test_cube's own
+           fragments use above -- a tumbling piece's shaded face should track its own real spin,
+           not stay locked to its pre-rotation normal. */
+        PaperVec3 rotated[4];
+        for (int c = 0; c < 4; c++) rotated[c] = paper_vec3(rx[c], d->local_corners[c].y, rz[c]);
+        float dnx, dny, dnz;
+        cel_normal_from_quad(rotated, &dnx, &dny, &dnz);
+        if (d->material == PAPER_MATERIAL_WOOD) cel_color4f(0.35f, 0.22f, 0.15f, fade, dnx, dny, dnz);
+        else if (d->material == PAPER_MATERIAL_METAL) cel_color4f(0.5f, 0.5f, 0.55f, fade, dnx, dny, dnz);
+        else if (d->material == PAPER_MATERIAL_PAPER) cel_color4f(0.8f, 0.78f, 0.7f, fade, dnx, dny, dnz);
+        else cel_color4f(0.4f, 0.38f, 0.35f, fade, dnx, dny, dnz); /* CONCRETE -- a real, slightly darker tint than an intact fragment's own, reads as broken debris */
 
         for (int c = 0; c < 4; c++) {
             glVertex3f(d->anchor_x + rx[c] + d->offset_x,
@@ -728,21 +847,45 @@ static void draw_player_marker(float x, float y, float z, float yaw, int is_own)
     glTranslatef(x, y + 0.9f, z);
     glRotatef(yaw * 180.0f / (float)M_PI, 0.0f, 1.0f, 0.0f);
     float hw = 0.35f, hh = 0.9f, hl = 0.25f;
+
+    /* S231: outline pre-pass -- box corners here are already centered on the local (post-
+       translate/rotate) origin, so scaling by PC_OUTLINE_SCALE around (0,0,0) pushes every vertex
+       outward along its own approximate face normal, same real technique draw_test_cube_outline
+       uses. Runs inside the same pushed/rotated matrix, so it inherits the player's own facing. */
+    float ow = hw * PC_OUTLINE_SCALE, oh = hh * PC_OUTLINE_SCALE, ol = hl * PC_OUTLINE_SCALE;
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+    glColor3f(PC_OUTLINE_R, PC_OUTLINE_G, PC_OUTLINE_B);
     glBegin(GL_QUADS);
-    if (is_own) glColor3f(0.9f, 0.3f, 0.2f); else glColor3f(0.25f, 0.55f, 0.85f);
+    glVertex3f(-ow, oh, -ol); glVertex3f(ow, oh, -ol); glVertex3f(ow, oh, ol); glVertex3f(-ow, oh, ol);
+    glVertex3f(-ow, -oh, -ol); glVertex3f(-ow, -oh, ol); glVertex3f(ow, -oh, ol); glVertex3f(ow, -oh, -ol);
+    glVertex3f(-ow, -oh, ol); glVertex3f(-ow, oh, ol); glVertex3f(ow, oh, ol); glVertex3f(ow, -oh, ol);
+    glVertex3f(-ow, -oh, -ol); glVertex3f(ow, -oh, -ol); glVertex3f(ow, oh, -ol); glVertex3f(-ow, oh, -ol);
+    glVertex3f(-ow, -oh, -ol); glVertex3f(-ow, oh, -ol); glVertex3f(-ow, oh, ol); glVertex3f(-ow, -oh, ol);
+    glVertex3f(ow, -oh, -ol); glVertex3f(ow, -oh, ol); glVertex3f(ow, oh, ol); glVertex3f(ow, oh, -ol);
+    glEnd();
+    glDisable(GL_CULL_FACE);
+
+    /* Real cel-shaded body -- same axis-aligned analytic normals draw_city_world's own faces use. */
+    float br = is_own ? 0.9f : 0.25f, bg = is_own ? 0.3f : 0.55f, bb = is_own ? 0.2f : 0.85f;
+    glBegin(GL_QUADS);
     /* top */
+    cel_color3f(br, bg, bb, 0.0f, 1.0f, 0.0f);
     glVertex3f(-hw, hh, -hl); glVertex3f(hw, hh, -hl); glVertex3f(hw, hh, hl); glVertex3f(-hw, hh, hl);
     /* bottom */
+    cel_color3f(br, bg, bb, 0.0f, -1.0f, 0.0f);
     glVertex3f(-hw, -hh, -hl); glVertex3f(-hw, -hh, hl); glVertex3f(hw, -hh, hl); glVertex3f(hw, -hh, -hl);
     /* front (+z = forward, matches the server's own atan2f(move_x, move_z) yaw convention) */
-    glColor3f(1.0f, 0.9f, 0.4f); /* real "which way is forward" cue, same convention every real vehicle box in this monorepo uses */
+    cel_color3f(1.0f, 0.9f, 0.4f, 0.0f, 0.0f, 1.0f); /* real "which way is forward" cue, same convention every real vehicle box in this monorepo uses */
     glVertex3f(-hw, -hh, hl); glVertex3f(-hw, hh, hl); glVertex3f(hw, hh, hl); glVertex3f(hw, -hh, hl);
-    if (is_own) glColor3f(0.9f, 0.3f, 0.2f); else glColor3f(0.25f, 0.55f, 0.85f);
     /* back */
+    cel_color3f(br, bg, bb, 0.0f, 0.0f, -1.0f);
     glVertex3f(-hw, -hh, -hl); glVertex3f(hw, -hh, -hl); glVertex3f(hw, hh, -hl); glVertex3f(-hw, hh, -hl);
     /* left */
+    cel_color3f(br, bg, bb, -1.0f, 0.0f, 0.0f);
     glVertex3f(-hw, -hh, -hl); glVertex3f(-hw, hh, -hl); glVertex3f(-hw, hh, hl); glVertex3f(-hw, -hh, hl);
     /* right */
+    cel_color3f(br, bg, bb, 1.0f, 0.0f, 0.0f);
     glVertex3f(hw, -hh, -hl); glVertex3f(hw, -hh, hl); glVertex3f(hw, hh, hl); glVertex3f(hw, hh, -hl);
     glEnd();
     glPopMatrix();
