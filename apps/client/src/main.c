@@ -61,6 +61,12 @@ static unsigned int now_ms(void) { return SDL_GetTicks(); }
 static char g_player_jwt[2048];
 static char g_player_display_name[64];
 
+/* Keep the IDUNA bearer credential alive independently of the short-lived connect ticket.  A
+   connected UDP session does not need to present the JWT on every packet, but it does need a
+   valid JWT to mint a new ticket after a reconnect. */
+#define PC_TOKEN_REFRESH_MS       (15u * 60u * 1000u)
+#define PC_TOKEN_REFRESH_RETRY_MS (30u * 1000u)
+
 static int hex_decode(const char *hex, unsigned char *out, size_t out_len) {
     size_t hexlen = strlen(hex);
     if (hexlen != out_len * 2) return 0;
@@ -121,6 +127,34 @@ static int pc_login(const char *iduna_host, int iduna_port, const char *email, c
     return 1;
 }
 
+/* pc_refresh_player_token asks IDUNA to rotate the current bearer token before it expires.  Do
+   not overwrite the working token until the complete replacement has been validated: a transient
+   HTTP failure must not turn an otherwise healthy game session into an avoidable logout. */
+static int pc_refresh_player_token(const char *iduna_host, int iduna_port,
+                                   char *out_err, size_t out_err_len) {
+    char resp[4096];
+    char refreshed_token[sizeof(g_player_jwt)];
+    int status = 0;
+
+    if (http_post_json(iduna_host, iduna_port, "/api/v1/auth/refresh", g_player_jwt, NULL,
+                       resp, sizeof(resp), &status) != 0) {
+        snprintf(out_err, out_err_len, "Could not reach token refresh server.");
+        return 0;
+    }
+    if (status != 200) {
+        snprintf(out_err, out_err_len, "Token refresh failed (server said %d).", status);
+        return 0;
+    }
+    if (!http_extract_json_string_field(resp, "token", refreshed_token, sizeof(refreshed_token))) {
+        snprintf(out_err, out_err_len, "Token refresh response missing token.");
+        return 0;
+    }
+
+    memcpy(g_player_jwt, refreshed_token, sizeof(g_player_jwt));
+    printf("LOGIN: token refreshed.\n");
+    return 1;
+}
+
 /* pc_mint_ticket: real POST /api/v1/papercraft/ticket -- no queue step at all, unlike
    WEAKNIGHT_BEDROCK_RACERS' own matchmaking flow. PAPERCRAFT is single-node persistent
    ("papercraft shouldnt have matches"): login, then mint, then connect. */
@@ -131,6 +165,21 @@ static int pc_mint_ticket(const char *iduna_host, int iduna_port,
     if (http_post_json(iduna_host, iduna_port, "/api/v1/papercraft/ticket", g_player_jwt, NULL, resp, sizeof(resp), &status) != 0) {
         snprintf(out_err, out_err_len, "Could not reach ticket server.");
         return 0;
+    }
+    /* A reconnect can be the first HTTP request after a laptop has slept past the JWT lifetime.
+       Refresh once and retry the ticket mint instead of making that ordinary recovery path look
+       like an authentication logout. */
+    if (status == 401) {
+        char refresh_err[128] = "";
+        if (!pc_refresh_player_token(iduna_host, iduna_port, refresh_err, sizeof(refresh_err))) {
+            snprintf(out_err, out_err_len, "%s", refresh_err);
+            return 0;
+        }
+        if (http_post_json(iduna_host, iduna_port, "/api/v1/papercraft/ticket", g_player_jwt,
+                           NULL, resp, sizeof(resp), &status) != 0) {
+            snprintf(out_err, out_err_len, "Could not reach ticket server.");
+            return 0;
+        }
     }
     if (status != 200) {
         snprintf(out_err, out_err_len, "Ticket mint failed (server said %d).", status);
@@ -1157,6 +1206,8 @@ int main(int argc, char **argv) {
     int have_snapshot = 0;
     int my_slot = 0;
     unsigned int last_connect_retry_ms = now_ms();
+    unsigned int last_token_refresh_ms = now_ms();
+    unsigned int last_token_refresh_attempt_ms = last_token_refresh_ms;
     unsigned int cmd_seq = 0;
     char reject_reason[PC_REJECT_REASON_MAX + 1]; reject_reason[0] = '\0';
 
@@ -1310,6 +1361,20 @@ int main(int argc, char **argv) {
         }
 
         unsigned int now = now_ms();
+        /* Refresh well before a normal JWT lifetime can strand a still-running player on their
+           next reconnect.  A failed refresh is deliberately non-fatal: UDP gameplay continues
+           with its already-authorized session, and the request is retried at a bounded cadence
+           instead of auto-logging the player out or hammering IDUNA once per frame. */
+        if (now - last_token_refresh_ms >= PC_TOKEN_REFRESH_MS &&
+            now - last_token_refresh_attempt_ms >= PC_TOKEN_REFRESH_RETRY_MS) {
+            char refresh_err[128] = "";
+            last_token_refresh_attempt_ms = now;
+            if (pc_refresh_player_token(iduna_host, iduna_port, refresh_err, sizeof(refresh_err))) {
+                last_token_refresh_ms = now;
+            } else {
+                fprintf(stderr, "LOGIN: token refresh deferred: %s\n", refresh_err);
+            }
+        }
         if (!welcomed && !reject_reason[0] && now - last_connect_retry_ms >= 500) {
             sendto(sock, (const char *)&connect_pkt, sizeof(connect_pkt), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
             last_connect_retry_ms = now;
