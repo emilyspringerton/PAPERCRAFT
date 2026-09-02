@@ -1262,6 +1262,21 @@ int main(int argc, char **argv) {
     unsigned int last_snapshot_ms = 0;
     int reconnecting = 0;
     int ever_welcomed = 0;
+    /* Real, live bug found and fixed (2026-09-02, founder real-time: "at some point i just get
+       logged out if im logged into papercraft for long enough"): garyredg/codex's own
+       PC_TOKEN_REFRESH_MS periodic refresh + pc_mint_ticket's 401-refresh-retry (commit
+       d36297a) can only ever run from inside pc_mint_ticket, which this file calls exactly ONCE,
+       before the socket even exists -- the actual reconnect path below (triggered by
+       PC_CLIENT_STALE_MS) never called it again; it just re-sent the SAME connect_pkt built from
+       the ORIGINAL login-time ticket, forever. IDUNA's own /api/v1/auth/refresh, by design (see
+       RefreshHandler's own doc comment + TestRefreshExpiredToken, both real and unchanged),
+       rejects an already-expired JWT outright, so once the original ticket/JWT pair genuinely
+       aged out, every future reconnect attempt kept replaying the exact same now-invalid ticket
+       bytes and could never recover -- looking exactly like "eventually you just get logged
+       out." need_ticket_remint marks a reconnect that must mint a fresh ticket (which now
+       exercises garyredg/codex's own refresh-then-retry logic for real, inside pc_mint_ticket)
+       before the retry loop below is allowed to resend CONNECT again. */
+    int need_ticket_remint = 0;
 
     int running = 1;
     unsigned int win_logged = 0;
@@ -1376,7 +1391,32 @@ int main(int argc, char **argv) {
             }
         }
         if (!welcomed && !reject_reason[0] && now - last_connect_retry_ms >= 500) {
-            sendto(sock, (const char *)&connect_pkt, sizeof(connect_pkt), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+            int can_send = 1;
+            if (need_ticket_remint) {
+                /* Blocking, same as the one real pc_mint_ticket call at startup -- fine here too:
+                   the disruptive "CONNECTION LOST" screen is already up for the whole duration of
+                   this reconnect attempt (see the render loop below), so a few hundred extra ms
+                   for a real HTTP round trip is invisible, not a new stall. On success this also
+                   exercises garyredg/codex's own real 401-refresh-and-retry logic inside
+                   pc_mint_ticket for the first time it can ever actually matter -- a still-valid-
+                   but-aging JWT gets rotated via /api/v1/auth/refresh; a genuinely expired one
+                   correctly falls through to the retry-until-it-mints behavior below instead
+                   (refresh cannot revive an expired token by IDUNA's own design -- see
+                   RefreshHandler's doc comment -- so failure here is expected, not a new bug). */
+                char remint_err[128] = "";
+                if (pc_mint_ticket(iduna_host, iduna_port, ticket, remint_err, sizeof(remint_err))) {
+                    memcpy(connect_pkt.ticket, ticket, PC_TICKET_TOTAL_LEN);
+                    need_ticket_remint = 0;
+                    fprintf(stderr, "Reconnect: minted a fresh ticket.\n");
+                } else {
+                    fprintf(stderr, "Reconnect: ticket re-mint failed, will retry: %s\n", remint_err);
+                    can_send = 0; /* never resend a known-stale ticket -- wait for a mint that
+                                     actually succeeds instead of spinning on a doomed CONNECT. */
+                }
+            }
+            if (can_send) {
+                sendto(sock, (const char *)&connect_pkt, sizeof(connect_pkt), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+            }
             last_connect_retry_ms = now;
         }
 
@@ -1446,6 +1486,9 @@ int main(int argc, char **argv) {
                 to tell them apart from a real log capture after the fact. */
             welcomed = 0;
             reconnecting = 1;
+            need_ticket_remint = 1; /* the original ticket/JWT may well have aged out by now --
+                mint a fresh one (see this file's own doc comment on need_ticket_remint) before
+                resending CONNECT, instead of replaying stale credentials forever. */
             last_connect_retry_ms = now - 500; /* real, immediate retry -- don't wait a further
                                                     500ms on top of the real staleness window
                                                     that already just elapsed. */
