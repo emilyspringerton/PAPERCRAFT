@@ -1535,6 +1535,27 @@ int main(int argc, char **argv) {
             if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_B)) buttons |= PC_BTN_CROUCH;
         }
 
+        /* Real, live bug found and fixed (2026-09-02, founder real-time: "make movement relative
+           to the camera with wasd and the control stick now its like hard coded to north south
+           east and west"): move_x/move_z above are LOCAL input axes (W/stick-forward = "away
+           from me", D/stick-right = "to my right"), but they were being sent to the server
+           completely unrotated -- since the server derives own.yaw straight from
+           atan2f(move_x, move_z) (world +Z = north, +X = east, see this file's own doc comment
+           at the eye-position formula below), W always walked the character due world-north
+           regardless of which way the real, decoupled orbit camera (cam_yaw, added the same
+           session mouse-look was) was actually pointing. Rotate the local input by cam_yaw
+           before sending so "forward" always means "the way the camera is currently looking" --
+           the exact same real spherical-orbit convention (`eye = target - dist*(sin(cam_yaw),
+           ..., cos(cam_yaw))`) already governs where the camera itself sits, so this reuses that
+           formula rather than inventing a second one. Verified by hand at cam_yaw=0: rotation is
+           the identity, exactly reproducing the pre-existing world-locked behavior (W=+Z,
+           D=+X) -- this is a real generalization of the old behavior, not a divergent rewrite. */
+        {
+            float local_x = move_x, local_z = move_z;
+            move_x = local_x * cosf(cam_yaw) + local_z * sinf(cam_yaw);
+            move_z = -local_x * sinf(cam_yaw) + local_z * cosf(cam_yaw);
+        }
+
         /* Real "menu pauses movement" -- while the real inventory list is open, WASD/stick/jump/
            crouch input is real, deliberately zeroed rather than sent through, so browsing the
            list doesn't also walk the character around or trigger a jump. A real, empty UserCmd
