@@ -1535,26 +1535,24 @@ int main(int argc, char **argv) {
             if (SDL_GameControllerGetButton(pad, SDL_CONTROLLER_BUTTON_B)) buttons |= PC_BTN_CROUCH;
         }
 
-        /* Real, live bug found and fixed (2026-09-02, founder real-time: "make movement relative
-           to the camera with wasd and the control stick now its like hard coded to north south
-           east and west"): move_x/move_z above are LOCAL input axes (W/stick-forward = "away
-           from me", D/stick-right = "to my right"), but they were being sent to the server
-           completely unrotated -- since the server derives own.yaw straight from
-           atan2f(move_x, move_z) (world +Z = north, +X = east, see this file's own doc comment
-           at the eye-position formula below), W always walked the character due world-north
-           regardless of which way the real, decoupled orbit camera (cam_yaw, added the same
-           session mouse-look was) was actually pointing. Rotate the local input by cam_yaw
-           before sending so "forward" always means "the way the camera is currently looking" --
-           the exact same real spherical-orbit convention (`eye = target - dist*(sin(cam_yaw),
-           ..., cos(cam_yaw))`) already governs where the camera itself sits, so this reuses that
-           formula rather than inventing a second one. Verified by hand at cam_yaw=0: rotation is
-           the identity, exactly reproducing the pre-existing world-locked behavior (W=+Z,
-           D=+X) -- this is a real generalization of the old behavior, not a divergent rewrite. */
-        {
-            float local_x = move_x, local_z = move_z;
-            move_x = local_x * cosf(cam_yaw) + local_z * sinf(cam_yaw);
-            move_z = -local_x * sinf(cam_yaw) + local_z * cosf(cam_yaw);
-        }
+        /* Real, live redesign (2026-09-02, founder real-time first "make movement relative to
+           the camera", then, after that first attempt still felt wrong, "check the way that the
+           shankpit construct works... it has an example of how 3rd person should work"): an
+           earlier same-session attempt rotated move_x/move_z by cam_yaw right here, client-side,
+           before sending -- mathematically correct (verified against SHANKPIT_CONSTRUCT.txt's
+           own "Camera/aim world convention" comment) but incomplete, because the SERVER still
+           derived the player's own facing from whichever direction that rotated vector pointed
+           (`if (mx || mz) state.yaw = atan2f(mx, mz)`) -- so strafing or backpedaling still spun
+           the character to face its direction of travel instead of continuing to face the
+           camera, unlike a real 3rd-person controller (and unlike SHANKPIT's own real
+           phys_update_player, which sets facing straight from an explicitly transmitted yaw,
+           never derives it from movement). Real fix, moved server-side to match that reference
+           model exactly: send LOCAL fwd/strafe (move_x/move_z, unrotated) plus the camera's own
+           current yaw as its own field -- the server now does the rotation AND sets facing
+           directly from this transmitted yaw, every tick, regardless of movement. See
+           packages/common/papercraft_protocol.h's own updated PcUserCmdPacket doc comment for
+           the full real design, and apps/server/src/main.c's own movement-tick comment for the
+           server-side half of this same real fix. */
 
         /* Real "menu pauses movement" -- while the real inventory list is open, WASD/stick/jump/
            crouch input is real, deliberately zeroed rather than sent through, so browsing the
@@ -1574,6 +1572,9 @@ int main(int argc, char **argv) {
             cmd.cmd_time_ms = now;
             cmd.move_x = move_x;
             cmd.move_z = move_z;
+            cmd.yaw = cam_yaw; /* real, decoupled facing -- see this file's own doc comment just
+                                   above and packages/common/papercraft_protocol.h's own
+                                   PcUserCmdPacket comment for the full real design. */
             cmd.buttons = buttons;
             sendto(sock, (const char *)&cmd, sizeof(cmd), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
         }

@@ -199,6 +199,10 @@ typedef struct {
     struct sockaddr_in addr;
     socklen_t addr_len;
     float latest_move_x, latest_move_z;
+    float latest_yaw; /* real, decoupled camera-facing yaw from the player's own latest UserCmd --
+                          see packages/common/papercraft_protocol.h's own PcUserCmdPacket comment
+                          and this file's own movement-tick comment below for the full real
+                          design (2026-09-02). */
     unsigned int latest_buttons; /* real PC_BTN_* bitmask from the player's own latest UserCmd */
     unsigned int latest_cmd_seq;
     unsigned int last_usercmd_ms;
@@ -605,6 +609,7 @@ static void spawn_player(PlayerSlot *s) {
        behind, not just s->state above. */
     s->latest_move_x = 0.0f;
     s->latest_move_z = 0.0f;
+    s->latest_yaw = 0.0f;
     s->latest_buttons = 0;
     s->latest_cmd_seq = 0;
     s->latest_cmd_time_ms = 0;
@@ -1109,6 +1114,7 @@ int main(int argc, char **argv) {
                         s->latest_cmd_seq = cmd.cmd_sequence;
                         s->latest_move_x = cmd.move_x;
                         s->latest_move_z = cmd.move_z;
+                        s->latest_yaw = cmd.yaw;
                         s->latest_buttons = cmd.buttons;
                         s->last_usercmd_ms = now_ms();
                         s->latest_cmd_time_ms = cmd.cmd_time_ms;
@@ -1365,11 +1371,26 @@ int main(int argc, char **argv) {
                     }
                 }
 
-                float mx = s->latest_move_x, mz = s->latest_move_z;
-                if (mx > 1.0f) mx = 1.0f;
-                if (mx < -1.0f) mx = -1.0f;
-                if (mz > 1.0f) mz = 1.0f;
-                if (mz < -1.0f) mz = -1.0f;
+                /* Real, live redesign (2026-09-02, founder real-time: "make movement relative to
+                   the camera... check the way that the shankpit construct works... it has an
+                   example of how 3rd person should work"). local_x/local_z are the client's own
+                   LOCAL fwd/strafe input (packages/common/papercraft_protocol.h's own
+                   PcUserCmdPacket comment); rotate them by the player's own transmitted `yaw`
+                   into world-space mx/mz here, server-side, matching SHANKPIT_CONSTRUCT.txt's
+                   real phys_update_player (packages/simulation/game_physics.h) -- `wish_x =
+                   (fwd_x*fwd)+(right_x*strafe)`, `wish_z = (fwd_z*fwd)+(right_z*strafe)` with
+                   Forward(yaw)=(sin(yaw),cos(yaw))/Right(yaw)=(cos(yaw),-sin(yaw)), the same
+                   radian convention this file's own pre-existing atan2f(mx, mz) yaw derivation
+                   already used, not SHANKPIT server's own separate degrees-negated variant (kept
+                   consistent with this repo's own established math, not ported wholesale). */
+                float local_x = s->latest_move_x, local_z = s->latest_move_z;
+                if (local_x > 1.0f) local_x = 1.0f;
+                if (local_x < -1.0f) local_x = -1.0f;
+                if (local_z > 1.0f) local_z = 1.0f;
+                if (local_z < -1.0f) local_z = -1.0f;
+                float yaw = s->latest_yaw;
+                float mx = local_z * sinf(yaw) + local_x * cosf(yaw);
+                float mz = local_z * cosf(yaw) - local_x * sinf(yaw);
 
                 /* Real MOVE-stat gameplay consequence -- the real PARENA-compiled
                    on_papercraft_move_speed_boost_permille (packages/simulation/stat_effects_mod.c),
@@ -1447,9 +1468,18 @@ int main(int argc, char **argv) {
                     s->state.y = ground_y;
                 }
 
-                if (mx != 0.0f || mz != 0.0f) {
-                    s->state.yaw = atan2f(mx, mz);
-                }
+                /* Real, live redesign (2026-09-02, see this file's own movement-tick comment
+                   above): facing used to be DERIVED from movement direction (atan2f(mx, mz),
+                   only updated while actually moving) -- real, live symptom this caused, matching
+                   SHANKPIT_CONSTRUCT.txt's own real phys_update_player's opposite choice
+                   (`p->yaw = yaw`, always, straight from the transmitted camera yaw): strafing
+                   or backpedaling spun the character to face its direction of travel instead of
+                   continuing to face the camera, and PC_PACKET_INTERACT's own real reach
+                   direction (sinf/cosf(state.yaw) below) inherited that same wrong-facing bug --
+                   the real cause the founder separately named as "the combat is jacked up" even
+                   with no real combat built yet. Facing is now unconditional and decoupled from
+                   movement entirely, exactly like SHANKPIT's own reference model. */
+                s->state.yaw = yaw;
 
                 /* Real, passive per-second XP tick, matching the construct's own real
                    progression_tick cadence (SHANKPIT_CONSTRUCT.txt lines 851-856:

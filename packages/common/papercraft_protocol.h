@@ -68,8 +68,34 @@ typedef struct {
     PcHeader hdr;
     unsigned int cmd_sequence;
     unsigned int cmd_time_ms;
-    float move_x; /* -1..1, world-space-relative-to-camera-yaw movement input, real analog */
-    float move_z; /* -1..1 */
+    /* Real, live redesign (2026-09-02, founder real-time: "make movement relative to the camera
+       with wasd and the control stick... check the way that the shankpit construct works... it
+       has an example of how 3rd person should work"). This struct's own comment used to claim
+       move_x/move_z were already "world-space-relative-to-camera-yaw" -- that was the real,
+       intended design from this file's very first commit (1d940a4), but the client never
+       actually implemented it (raw WASD went out as literal world-space north/east/south/west,
+       camera yaw was never consulted at all) until a same-session first attempt rotated the
+       vector client-side before sending. Reviewing SHANKPIT_CONSTRUCT.txt's own real
+       phys_update_player (packages/simulation/game_physics.h) found the correct, more complete
+       model that first attempt was still missing: a real 3rd-person controller sends LOCAL
+       fwd/strafe plus the camera's own yaw as its own explicit field, and the HOST sets the
+       player's facing straight from that transmitted yaw -- never derived from whichever
+       direction the player happens to be moving. PAPERCRAFT's own prior behavior (state.yaw =
+       atan2f(mx, mz), server main.c) tied facing to travel direction even after the client-side
+       rotation fix, which is exactly why it still felt wrong: strafing or backpedaling spun the
+       character to face its direction of travel instead of continuing to face the camera, and
+       PC_PACKET_INTERACT's own real reach direction (sinf/cosf(state.yaw)) inherited that same
+       wrong-facing problem -- the real, honest cause of the "combat is jacked up" symptom too,
+       even with no real combat built yet. */
+    float move_x; /* -1..1, LOCAL strafe input (right = positive), camera-yaw-relative once
+                     rotated server-side by `yaw` below -- see PC_TICK_DT's own movement block */
+    float move_z; /* -1..1, LOCAL forward input (forward = positive) */
+    float yaw;    /* radians, Forward(yaw) = (sin(yaw), cos(yaw)) -- this repo's own established
+                     convention (matches the pre-existing atan2f(mx, mz) yaw this struct's old
+                     move-derived facing used, and apps/lobby/src/main.c's own real "Camera/aim
+                     world convention (single source of truth)" comment in the construct). The
+                     client's own current camera yaw (cam_yaw), sent every tick regardless of
+                     whether the player is moving -- facing no longer depends on movement at all. */
     unsigned int buttons; /* PC_BTN_* bitmask */
 } PcUserCmdPacket;
 
