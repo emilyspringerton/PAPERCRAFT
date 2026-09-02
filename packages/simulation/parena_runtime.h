@@ -19,7 +19,9 @@
  * tcp_connect_impl to actually gcc-compile -- a plain #include
  * <netdb.h> alone was not enough. 200112L = POSIX.1-2001, the version
  * that defines getaddrinfo. */
+#ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200112L
+#endif
 /* _DEFAULT_SOURCE alongside _POSIX_C_SOURCE (both may coexist under glibc,
  * unlike _POSIX_C_SOURCE alone) -- needed for pty_open_impl below:
  * forkpty/openpty are a real glibc/BSD extension declared in <pty.h>, not
@@ -28,7 +30,9 @@
  * actually see forkpty's declaration, the same "define the feature-test
  * macro before any system header, verify by actually compiling" discipline
  * tcp_connect_impl's own header comment above already documents. */
+#ifndef _DEFAULT_SOURCE
 #define _DEFAULT_SOURCE
+#endif
 
 #include <stddef.h>
 #include <string.h>
@@ -70,23 +74,18 @@
 #include <util.h>
 #endif
 #endif
-/* SDL2 -- built-in, same tier as core (STDLIB.md's own "sdl2" section:
- * "SDL2 is built in... no (import sdl2) line needed"), so its header is
- * unconditionally available here rather than gated behind a feature
- * macro. Real, honest dependency this adds to every build of this
- * runtime, not silently glossed over: any environment building PARENA
- * programs needs libsdl2-dev installed (confirmed present on this box).
- * Harmless for a program that never calls into stdlib/sdl2.prn -- every
- * sdl2_*_impl function below is `static inline`, so an unreferenced one
- * emits no symbol at all, no -lSDL2 needed unless something actually
- * calls one. */
+/* SDL2 is an optional runtime integration.  Most PARENA-generated code,
+ * including PAPERCRAFT's scalar and editor-domain mods, does not use the
+ * sdl2 stdlib and must be buildable in a headless test environment.  Keep
+ * the SDL declarations and host glue behind an explicit opt-in so merely
+ * including this common runtime does not require SDL development headers.
+ * A host that emits calls to sdl2_*_impl enables this with
+ * -DPARENA_RUNTIME_ENABLE_SDL2 and links its required SDL2/SDL2_ttf
+ * libraries. */
+#ifdef PARENA_RUNTIME_ENABLE_SDL2
 #include <SDL2/SDL.h>
-/* SDL2_ttf -- real text rendering, the concrete next real extension
- * flagged when sdl2.prn's own renderer/draw calls were closed (2026-08-26):
- * "the next real extension once an editor loop actually needs to render
- * text." Same "unconditionally available, harmless if unused" reasoning
- * as SDL2 itself above -- confirmed libsdl2-ttf-dev present on this box. */
 #include <SDL2/SDL_ttf.h>
+#endif
 
 typedef struct ParenaArenaBlock {
     struct ParenaArenaBlock *next;
@@ -1179,7 +1178,9 @@ static inline Arena *parena_current_arena(void) {
  * (Pty{fd:I32}, FileHandle{fd:I32}) already proves I32-handle structs
  * work end-to-end through VS0's real Result/Option boxing; a struct
  * field holding a raw C pointer is untested territory in this compiler
- * and not worth risking on this pass. */
+ * and not worth risking on this pass.  This section is intentionally
+ * opt-in; see PARENA_RUNTIME_ENABLE_SDL2 above. */
+#ifdef PARENA_RUNTIME_ENABLE_SDL2
 #define SDL2_MAX_WINDOWS 8
 #define SDL2_MAX_RENDERERS 8
 static SDL_Window *g_sdl2_windows[SDL2_MAX_WINDOWS];
@@ -1661,6 +1662,7 @@ static inline int sdl2_measure_text_height_impl(int font_handle, const char *tex
     if (TTF_SizeUTF8(g_sdl2_fonts[font_handle], text, &w, &h) != 0) return -1;
     return h;
 }
+#endif /* PARENA_RUNTIME_ENABLE_SDL2 */
 
 /* ---- stdlib/json.prn's own real host-glue forward declaration (2026-08-28) --------------
  * json.prn's own json-unescape #target body calls host_json_unescape -- a real, per-HOST-
