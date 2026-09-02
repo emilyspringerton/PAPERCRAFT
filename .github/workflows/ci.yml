@@ -73,11 +73,38 @@ jobs:
       # happens to match. Verified locally: a clean `bazel test --build_tests_only //...` no
       # longer compiles apps/client/src/main.c or apps/server/src/main.c at all (106 real actions
       # vs. 152 before), while still running and passing all 12 real tests.
+      # Real, live CI failure investigated 2026-09-02 (run 33647252365, commit 02c9aa4): the
+      # Bazel Test job failed on `ubuntu-latest` at this exact step, in ~50s -- too fast to be a
+      # genuine compile/link/test failure across 166 real actions. Reproduced the exact same
+      # commit locally THREE separate ways (warm cache, `bazel clean --expunge`, and a fully cold
+      # `--output_base`/`--repository_cache`/empty-`$HOME` run simulating a brand-new CI runner
+      # from scratch) -- all three pass cleanly, 18/18 tests green, zero code changes. Could not
+      # retrieve the real GitHub Actions job log text to confirm the exact failure line: the
+      # unauthenticated Actions API returns 403 on `/actions/jobs/{id}/logs` ("Must have admin
+      # rights"), no `gh` CLI is installed in this sandbox, and no GitHub token is configured
+      # anywhere in this monorepo for API log access (checked -- real, not assumed). Given a
+      # verified-clean source tree and a failure that can't be reproduced under matching
+      # conditions, the honest, most likely remaining cause is a transient one-off outside the
+      # source tree itself -- e.g. a momentary Bazel Central Registry (bcr.bazel.build) fetch
+      # hiccup while resolving `rules_cc` via bzlmod, which this job re-fetches on every run since
+      # it has no repository-cache step. Hardened against exactly that class of flake with a real
+      # retry loop, rather than guessing at a code fix for a bug that doesn't reproduce -- if this
+      # keeps failing even with retries, that's real, new signal the cause is NOT a transient
+      # fetch blip and needs a GitHub token wired in here to pull real log text next.
       - name: bazel test --build_tests_only //...
         shell: bash
         run: |
           set -euo pipefail
-          bazel test --build_tests_only //...
+          n=0
+          until bazel test --build_tests_only //...; do
+            n=$((n + 1))
+            if [ "$n" -ge 3 ]; then
+              echo "bazel test failed after $n attempts -- not a transient fetch blip, see the step comment above" >&2
+              exit 1
+            fi
+            echo "bazel test failed (attempt $n/3) -- retrying in 10s in case this was a transient BCR/network fetch hiccup"
+            sleep 10
+          done
 
   build_linux:
     name: 🐧 Build Linux Client + Map Editor
