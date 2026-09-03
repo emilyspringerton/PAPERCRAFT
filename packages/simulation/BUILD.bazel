@@ -332,3 +332,26 @@ cc_test(
     srcs = ["editor_mod_test.c"],
     deps = [":editor", ":parena_runtime"],
 )
+
+# explosion -- the real, PARENA-compiled first slice of PAPERCRAFT's own "Roblox API parity" mod
+# surface (kanban priority-queue card 499988, 2026-09-03: "start with the api for setting an
+# explosion"). Real linear blast-radius damage falloff (Roblox's own real Explosion primitive as
+# the reference point) -- host C owns turning real vector distance into the single integer
+# distance this mod takes, and owns actually triggering an explosion at all (no PAPERCRAFT
+# gameplay host code exists yet, same real gap level_mod.prn's own header comment already
+# names). Generated from PARENA/stdlib/papercraft/explosion_mod.prn via `parena build`,
+# committed here per this repo's own "generated code committed" precedent.
+cc_library(
+    name = "explosion",
+    srcs = ["explosion_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    deps = [":parena_runtime"],
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "explosion_mod_test",
+    srcs = ["explosion_mod_test.c"],
+    deps = [":explosion", ":parena_runtime"],
+)

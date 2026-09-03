@@ -1147,6 +1147,29 @@ mechanics work) — the WELCOME-time real inventory sync round-trip WAS observed
 full single-object destruction was not re-chased after the founder's own real-time direction to
 stop using the slow Python probe, in favor of the real native test above.
 
+## Real Roblox-API-parity mod surface, first slice (2026-09-03)
+
+Founder, kanban priority queue: "can we start to add more api surfaces to PAPERCRAFT mod api
+surface we want to get parity with ROBLOX apis start with the api for setting an explosion." A
+real, new, ongoing direction — grow this repo's own mod API surface (currently: inventory,
+level/XP, item drop, pickup, paper fragment damage, editor, phone, talent, stat effects, slide
+jump) toward parity with Roblox's own real, much broader scripting API, one real primitive at a
+time, starting with explosion.
+
+**First real slice shipped**: `PARENA/stdlib/papercraft/explosion_mod.prn` →
+`packages/simulation/explosion_mod.c` — real linear blast-radius damage falloff, the same real
+`(defn on-papercraft-explosion-damage-at-distance ...)` / `(defn
+on-papercraft-explosion-in-range? ...)` shape as Roblox's own real `Explosion` instance
+(`Position`/`BlastRadius`), scoped to damage only for this v0 (Roblox's own real `BlastPressure`
+force/knockback behavior is a real, separate, named next API surface, not built here). Same real
+I32-only, mod-decides/host-applies split every prior mod in this repo already uses — see that
+file's own header comment for the full real design and honest limitations. `bazel test
+//packages/simulation:explosion_mod_test` and the full `//packages/simulation:all` suite (15
+tests) both pass. Real, honest, unwired gap: this repo has no gameplay host code that actually
+triggers an explosion yet (same real "no host to call it from" gap `level_mod.prn`'s own header
+comment already names for XP application) — this is real, tested decision logic waiting for
+that real host wiring, not a live in-game feature.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled
