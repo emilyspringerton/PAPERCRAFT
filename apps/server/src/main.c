@@ -370,9 +370,19 @@ static void save_world_damage(void) {
    able to take the whole persistent, always-running server down. A missing --mods-manifest file
    itself is the same real, non-fatal case: "zero mods loaded", not an error, since a fresh
    checkout before any real mod author has written one is the common real state. */
+/* version (kanban priority-queue card 43432, "papercraft mod registry make it like npm but mo
+   betta," Phase A per NORTHSTAR.md's own "A real mod registry" section): a real, small,
+   backward-compatible step toward "which version of this mod is this" being answerable at all --
+   today a mod is just an unversioned .so at a path. Optional third pipe field on a manifest
+   line (so_path|function|version); an omitted field (every manifest written before this pass)
+   defaults to PC_MOD_VERSION_UNVERSIONED, so no existing manifest needs editing. Not yet used
+   for anything beyond being recorded and reported -- no compatibility checking, no resolution,
+   both real, separate, later phases (B/C in NORTHSTAR.md) this alone doesn't attempt. */
+#define PC_MOD_VERSION_UNVERSIONED "0.0.0-unversioned"
 #define PC_MOD_REGISTRY_MAX 16
 typedef struct {
     char name[64];
+    char version[32];
     void *fn;
 } PcModRegistryEntry;
 static PcModRegistryEntry g_mod_registry[PC_MOD_REGISTRY_MAX];
@@ -436,12 +446,22 @@ static void load_mods_manifest(const char *path) {
 
         char *sep = strchr(p, '|');
         if (!sep) {
-            fprintf(stderr, "WARNING: mods manifest %s line %d: malformed (expected so_path|function), skipped\n", path, lineno);
+            fprintf(stderr, "WARNING: mods manifest %s line %d: malformed (expected so_path|function[|version]), skipped\n", path, lineno);
             continue;
         }
         *sep = '\0';
         const char *so_path = p;
-        const char *fn_name = sep + 1;
+        char *fn_name = sep + 1;
+
+        /* Optional third field (version) -- see PC_MOD_VERSION_UNVERSIONED's own doc comment.
+           A manifest line with no second '|' is exactly the pre-existing 2-field format, still
+           fully supported. */
+        const char *version = PC_MOD_VERSION_UNVERSIONED;
+        char *ver_sep = strchr(fn_name, '|');
+        if (ver_sep) {
+            *ver_sep = '\0';
+            version = ver_sep + 1;
+        }
 
         if (g_mod_registry_count >= PC_MOD_REGISTRY_MAX) {
             fprintf(stderr, "WARNING: mods manifest %s line %d: registry full (%d max), skipped %s\n", path, lineno, PC_MOD_REGISTRY_MAX, fn_name);
@@ -463,9 +483,11 @@ static void load_mods_manifest(const char *path) {
 
         strncpy(g_mod_registry[g_mod_registry_count].name, fn_name, sizeof(g_mod_registry[g_mod_registry_count].name) - 1);
         g_mod_registry[g_mod_registry_count].name[sizeof(g_mod_registry[g_mod_registry_count].name) - 1] = '\0';
+        strncpy(g_mod_registry[g_mod_registry_count].version, version, sizeof(g_mod_registry[g_mod_registry_count].version) - 1);
+        g_mod_registry[g_mod_registry_count].version[sizeof(g_mod_registry[g_mod_registry_count].version) - 1] = '\0';
         g_mod_registry[g_mod_registry_count].fn = sym;
         g_mod_registry_count++;
-        printf("Real dynamically-loaded mod registered: %s (from %s)\n", fn_name, so_path);
+        printf("Real dynamically-loaded mod registered: %s@%s (from %s)\n", fn_name, version, so_path);
     }
     fclose(f);
     printf("Real mods manifest %s: %d mod(s) registered, %d distinct .so file(s) loaded.\n",

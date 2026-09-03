@@ -315,6 +315,71 @@ itself), and no live-server reload *for world-object edits* specifically (the mo
 now reloads live via `SIGHUP`, no restart — `MODDING.md`'s own current detail). The *pipeline* is
 real; the *embedded, no-rebuild, in-game* version of it named above is the real, remaining gap.
 
+## A real mod registry — scoping only (kanban priority-queue card 43432, "like npm but mo betta")
+
+No code built here — a real size assessment, same "plan a big ask honestly before committing to a
+pass" discipline this session's own `PARENA/docs/V16_NORTHSTAR.md` and `SHANKPIT/docs2/
+NORTHSTAR.md`'s own "Osaka Garage as a multiverse hub" section already applied to comparably large
+asks. Unlike those two, though, this one has a real, concrete, already-shipped foundation to build
+from, not a blank slate — see below.
+
+**What's already real and load-bearing, checked directly**: the dynamic-mod-loading pipeline
+`MODDING.md` documents is live today — a pipe-delimited manifest (`so_path|function|expected[|
+arg1[|arg2]]`) that `apps/server`'s own `--mods-manifest <path>` flag `dlopen`s/`dlsym`s at
+startup (and live-reloads via `SIGHUP`, no restart), with a real, designed fail-soft policy (a
+bad entry logs a `WARNING` and is skipped, never fatal) verified against real throwaway server
+instances running multiple distinct mods (`.so` files) at once. This is genuinely most of the
+*loading* half of what a package manager needs — what it's missing is everything on the
+*distribution* side: today `so_path` is always a local filesystem path, chosen and placed there by
+whoever runs the server. There is no publish step, no version, no name→artifact lookup, no
+discovery/search, and no dependency graph at all.
+
+**Real gaps an actual "npm but better" needs, named individually, not glossed into one blob**:
+1. **A real package identity + version scheme.** npm's own `name@semver` pair has no equivalent
+   here at all — today a mod is just "a `.so` file at a path," no name, no version, no way to ask
+   "which version of `xp_award_mod` is this."
+2. **A real registry backend** — somewhere a mod's compiled artifact (the `.so`, or ideally the
+   real `.prn` source `parena build` compiles from, for real reproducibility/auditability rather
+   than trusting an opaque binary) is stored, versioned, and servable by name. `IDUNA` is the
+   obvious, already-checked-not-guessed real candidate to build this ON rather than invent a new
+   service: it's already this monorepo's central trust authority, already has a real Apples
+   audit-ledger pattern (an append-only, queryable record of "who published what, when"), and
+   `JEWEL`'s own real precedent (a Jupyter kernel that shells out to `parena build` per cell) is
+   the closest existing analog for "take real `.prn` source, compile it server-side, hand back a
+   real artifact."
+3. **A real publish/install CLI.** `emily.cli`'s own existing command-surface conventions
+   (Apple/CHANGELOG/golden-index protocol) are the real, established pattern this monorepo already
+   uses for "a CLI that talks to IDUNA" — a `papercraft-mod publish`/`papercraft-mod install
+   <name>@<version>` pair modeled on that precedent, not a from-scratch CLI framework, is the
+   right shape to aim for.
+4. **Real dependency resolution.** Even a real v0 needs to answer whether one mod can depend on
+   another (this repo's own real mods today are independent, scalar-decision units — no mod
+   currently depends on another mod at all, so this may genuinely not be needed for v0, named here
+   as an open question rather than assumed necessary).
+5. **Trust/compatibility, honestly unresolved**: VS0 itself is still evolving (this exact session
+   shipped new `match`/`Result` support into `BURROW`'s own Go target) — a published mod compiled
+   against one VS0/BURROW version has no guarantee of still working against a later one. A real
+   registry needs SOME compatibility story (a compiler-version field on the manifest, at minimum)
+   before "install a mod someone else published" is safe to actually ship, not just technically
+   possible.
+
+**Real, phased plan, none of it started**:
+- Phase A (small, real, no new infra): extend the existing pipe-delimited manifest format with a
+  real `name`/`version` field per entry — makes "which mod is this" answerable today, zero backend
+  work, a real, immediate, backward-compatible win (an old manifest with no version field can
+  default to `0.0.0-unversioned`).
+- Phase B (the real registry): a new IDUNA-hosted endpoint (`POST/GET /api/v1/papercraft/mods`),
+  modeled directly on the existing Apples ledger's own append-only, queryable shape, storing real
+  `.prn` source (not just compiled `.so`) keyed by `name`/`version`, with IDUNA's own existing
+  auth/permission model gating who can publish.
+- Phase C (the real CLI): `papercraft-mod publish`/`install`, calling Phase B's endpoint,
+  compiling fetched `.prn` source locally via the real `parena build` (or `burrow build`) the
+  installing machine already has — mirrors this session's own real "compile don't trust a binary"
+  precedent (`idunapro`'s own CLI proof-of-concept compiled PARENA source into Go rather than
+  distributing a prebuilt artifact).
+- Phase D (real, later, not urgent given point 4 above): dependency resolution between mods, only
+  if a real mod ever actually needs it.
+
 ## Real Phase 0 — "a player can log in and spawn in the real persistent city, nothing else"
 
 **Server-side Phase 0 shipped and verified (2026-08-28).** `apps/server` is real and live-tested:

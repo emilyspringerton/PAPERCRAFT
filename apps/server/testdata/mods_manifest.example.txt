@@ -1,4 +1,4 @@
-# Real example --mods-manifest for apps/server. Format: so_path|function-name per line
+# Real example --mods-manifest for apps/server. Format: so_path|function-name[|version] per line
 # (blank lines and # comments skipped). Deliberately simpler than apps/dynmod_poc's own
 # testdata/manifest.txt -- no expected value or call arguments, since a real running server
 # doesn't self-check a mod's result the way a proof-of-concept tool does, it just registers
@@ -6,8 +6,13 @@
 # for the full real rationale, including the real, considered error-handling policy (a bad
 # mod is logged and skipped, never fatal to the server).
 #
+# version (kanban card 43432, NORTHSTAR.md's own "A real mod registry" Phase A) is optional --
+# an omitted third field defaults to PC_MOD_VERSION_UNVERSIONED, so every line below that doesn't
+# name one still works exactly as before. Not yet used for anything beyond being recorded and
+# reported -- no compatibility checking or resolution happens against it yet.
+#
 # Paths are relative to the PAPERCRAFT repo root, matching a real `bazel build //...` layout.
-bazel-bin/packages/simulation/libxp_award_mod.so|on_papercraft_xp_for_object_destroyed
-bazel-bin/packages/simulation/liblevel_mod.so|xp_required_for_level
-bazel-bin/packages/simulation/liblevel_mod.so|on_papercraft_level_for_xp
+bazel-bin/packages/simulation/libxp_award_mod.so|on_papercraft_xp_for_object_destroyed|1.0.0
+bazel-bin/packages/simulation/liblevel_mod.so|xp_required_for_level|1.0.0
+bazel-bin/packages/simulation/liblevel_mod.so|on_papercraft_level_for_xp|1.0.0
 bazel-bin/packages/simulation/libtalent_mod.so|on_papercraft_can_allocate_talent
