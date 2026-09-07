@@ -1235,6 +1235,64 @@ triggers an explosion yet (same real "no host to call it from" gap `level_mod.pr
 comment already names for XP application) — this is real, tested decision logic waiting for
 that real host wiring, not a live in-game feature.
 
+## Real "arsenal" weapon-switching (2026-09-07)
+
+Founder, real-time: "can we build shankpit affordances into papercraft? aresnal (weapon
+switching) but based on real entities like not all characters get all aresenals you have to
+find a shoddy [shotgun] etc" -> "using native parena" -> "with mods."
+
+Real, direct port of SHANKPIT's own weapon roster (`packages/common/protocol.h`'s own WPN_KNIFE/
+MAGNUM/AR/SHOTGUN/SNIPER/KATANA -- WPN_MISSILE excluded, a travelling-projectile type this
+sandbox's own combat has no hit-detection story for yet), but SHANKPIT itself has NO ownership
+concept at all -- `current_weapon` is just an index anyone can switch to freely (checked
+directly). This is the real, new part: `PARENA/stdlib/papercraft/weapon_mod.prn`
+(`on-papercraft-weapon-item-slot`, `on-papercraft-weapon-switch-allowed`) gates every switch on a
+real, per-player `weapons_owned` bitmask (`PlayerSlot`, `apps/server/src/main.c`) -- a player may
+only switch to a weapon they've actually found (`PC_ITEM_WPN_*` entity pickup, same real GTA3-
+style walk-over system `PC_ITEM_SCRAP` already uses) or the universal baseline `PC_WPN_KNIFE`
+(the mod's own real rule: "not all characters get all arsenals" implies SOME baseline everyone
+shares, matching GTA3/most sandbox precedent, not a genuinely weaponless start).
+
+**Real spawn path, not just a gate with nothing to gate**: `item_drop_mod.prn` extended so
+destroying a METAL object (`PAPER_MATERIAL_METAL`, the toughest material, 140 HP) drops a real
+`PC_ITEM_WPN_SHOTGUN` -- closing what would otherwise have been a real gap (the ownership/switch
+logic existing with zero real way for a weapon item to ever enter the world). Named honestly:
+this is the ONE real weapon currently obtainable; the other 5 slots have real switch-gate logic
+and a real item id each but no live drop source yet -- real, separate, easy follow-up once this
+first slice earns it (either more materials, or a dedicated weapon-crate world object).
+
+**A real compiler bug found and fixed along the way** (`PARENA/src/emit.c`): `!=` had no
+`binop_c_symbol()` entry at all -- every OTHER comparison (`</>/<=/>=/=`) did. `(!= a b)` silently
+fell through to being emitted as a bogus function call (`=(a, b)`), invalid C that only failed at
+gcc time, never at `parena build` time. Fixed with a new regression test in `PARENA/tests/
+test_emit.c` (`make test`: 35+8+348 passed, 0 failed).
+
+**Real wire-budget lesson, caught and fixed before landing, not after**: an initial attempt
+broadcast `current_weapon` inside `PcPlayerState` (every player needs to render what weapon
+others hold) -- this pushed `sizeof(PcSnapshotPacket)` from 1436 to 1500 bytes, past the real
+1472-byte (Ethernet MTU minus IP/UDP headers) unfragmented-UDP budget this struct's own doc
+comment already names as a real ceiling. Reverted: `current_weapon` lives only in the new,
+per-owner-only `PcWeaponOwnedPacket` (alongside `weapons_owned`), confirmed back to the switching
+player after every attempt (allowed or denied) -- not broadcast to opponents, since nothing in
+this sandbox renders another player's weapon yet anyway (no combat/viewmodel system exists,
+matching this doc's own "no combat requirement to start"). Real, honest, named follow-up once
+real combat/weapon rendering lands: broadcasting `current_weapon` to everyone needs a real
+wire-budget pass then (a packed per-player byte array alongside `active[]`, not a `PcPlayerState`
+field, is the likely shape), not solved here.
+
+Client: F1-F6 (function row, not the number row already spent on talent allocation) request a
+switch; the server's own real mod call is the only real gate, the client has no local opinion
+about whether a switch is legal, only whether it's worth SENDING the request at all (no point
+asking for a slot the client already knows it hasn't found). A new bottom-right HUD readout
+(`draw_weapon_hud`, joining `draw_progression_hud`/`draw_weak_connection_indicator`/
+`draw_ping_indicator` in the other three corners) shows the current weapon name and how many of
+the 6 real slots have been found so far.
+
+Real tests: `packages/simulation/weapon_mod_test.c` (item-to-slot mapping, the Knife-always-
+allowed rule, the real ownership gate, and a defensive floor against an out-of-range slot),
+`item_drop_mod_test.c` updated for the real METAL->Shotgun drop. Server and client both compile
+clean (gcc, `-Wall -Wextra`, zero errors) with the new wiring linked in.
+
 ## Explicitly not scoped yet
 
 No engine decision beyond "iterate SHANKPIT's own C/SDL2 lineage, not GFD's voxel engine" (settled

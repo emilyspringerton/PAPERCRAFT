@@ -6,22 +6,36 @@
 #include <math.h>
 
 int material_paper();
+int material_metal();
 int item_drop_scrap_id();
+int item_drop_shotgun_id();
 int on_papercraft_item_for_object_destroyed(int);
 
 int material_paper(void) {
     return 0;
 }
 
+int material_metal(void) {
+    return 3;
+}
+
 int item_drop_scrap_id(void) {
     return 1;
+}
+
+int item_drop_shotgun_id(void) {
+    return 5;
 }
 
 int on_papercraft_item_for_object_destroyed(int material __attribute__((unused))) {
     if ((material == material_paper())) {
     return item_drop_scrap_id();
     } else {
+    if ((material == material_metal())) {
+    return item_drop_shotgun_id();
+    } else {
     return 0;
+    }
     }
 }
 

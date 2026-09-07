@@ -769,6 +769,38 @@ static void draw_ping_indicator(int win_w, int win_h, unsigned int ping_ms) {
     pc_draw_string(line, (float)win_w - 130.0f, (float)win_h - 30.0f, 8);
 }
 
+/* PC_WEAPON_NAME_TABLE -- real, hardcoded name lookup keyed by PC_WPN_*, same "client
+   independently regenerates identical content from a shared id" discipline PC_PHONE_MESSAGE_TABLE
+   already establishes -- no weapon name is ever sent over the wire, just the real slot index. */
+static const char *PC_WEAPON_NAME_TABLE[PC_WPN_COUNT] = {
+    "Knife", "Magnum", "AR", "Shotgun", "Sniper", "Katana"
+};
+
+/* draw_weapon_hud -- real "arsenal" readout, bottom-right corner (2026-09-07, founder real-time:
+   "aresnal (weapon switching)... you have to find a [shotgun] etc"). Deliberately its own
+   distinct corner from draw_progression_hud (top-left)/draw_weak_connection_indicator (top-
+   center)/draw_ping_indicator (top-right) -- four independent real readouts, four real corners,
+   no overlap. Shows the current weapon plus how many of the PC_WPN_COUNT slots have actually
+   been found so far -- real, honest progress toward a full arsenal, not just "here's your gun". */
+static void draw_weapon_hud(int win_w, int win_h, unsigned char current_weapon, unsigned int weapons_owned) {
+    glDisable(GL_DEPTH_TEST);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0, win_w, 0, win_h, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    int found = 0;
+    for (int i = 0; i < PC_WPN_COUNT; i++) {
+        if (i == PC_WPN_KNIFE || (weapons_owned & (1u << i))) found++;
+    }
+    const char *name = (current_weapon < PC_WPN_COUNT) ? PC_WEAPON_NAME_TABLE[current_weapon] : "?";
+    char line[48];
+    snprintf(line, sizeof(line), "%s (%d/%d found)", name, found, PC_WPN_COUNT);
+    glColor3f(0.9f, 0.9f, 0.9f);
+    pc_draw_string(line, (float)win_w - 200.0f, 30.0f, 8);
+}
+
 /* PC_PHONE_MESSAGE_TABLE -- real, hardcoded handle+text lookup keyed by message_id, must match
    packages/common/papercraft_protocol.h's own PC_PHONE_MESSAGE_* values byte-for-byte (see
    PcPhoneMessagePacket's own doc comment for why this is a shared table instead of the source
@@ -1174,6 +1206,14 @@ int main(int argc, char **argv) {
     int inventory_open = 0;
     int inventory_cursor = 0;
 
+    /* Real "arsenal" ownership (2026-09-07, founder real-time: "aresnal (weapon switching)...
+       not all characters get all aresenals you have to find a [shotgun] etc"). Real, whole-
+       bitmask snapshot each time PC_PACKET_WEAPON_OWNED arrives, same "client remembers what
+       it's told" discipline g_inventory above already uses -- this client never asks "what do I
+       own", the server tells it once, right after a real pickup grants a new slot. */
+    unsigned int g_weapons_owned = 0;
+    unsigned char g_current_weapon = PC_WPN_KNIFE; /* real, server-confirmed, see PC_PACKET_WEAPON_OWNED */
+
     /* Real, basic SDL_GameController support (founder real-time, repeated for emphasis: "so we
        also support controller and support controller") -- opens the first real, currently
        connected controller if one exists; a session with none just leaves `pad` NULL and every
@@ -1341,6 +1381,31 @@ int main(int argc, char **argv) {
                     req.hdr.sequence = ++allocate_seq;
                     sendto(sock, (const char *)&req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
                 }
+                /* Real "arsenal" weapon-switch request -- F1-F6, matching PC_WPN_KNIFE..KATANA's
+                   own real order (papercraft_protocol.h). Function-row, not the number row
+                   already spent on talent allocation (1-5) above. One real request per keypress,
+                   same "request, let the server's own real PARENA-compiled gate decide" split
+                   PC_PACKET_ALLOCATE_TALENT already establishes -- this client has no local
+                   opinion at all about whether the switch is actually allowed; g_weapons_owned
+                   is used only to decide whether it's even worth SENDING the request (no point
+                   asking for a slot this client already knows it hasn't found), never to fake
+                   the switch locally. */
+                {
+                    int wpn_slot = -1;
+                    if (e.key.keysym.sym == SDLK_F1) wpn_slot = PC_WPN_KNIFE;
+                    else if (e.key.keysym.sym == SDLK_F2) wpn_slot = PC_WPN_MAGNUM;
+                    else if (e.key.keysym.sym == SDLK_F3) wpn_slot = PC_WPN_AR;
+                    else if (e.key.keysym.sym == SDLK_F4) wpn_slot = PC_WPN_SHOTGUN;
+                    else if (e.key.keysym.sym == SDLK_F5) wpn_slot = PC_WPN_SNIPER;
+                    else if (e.key.keysym.sym == SDLK_F6) wpn_slot = PC_WPN_KATANA;
+                    if (wpn_slot >= 0 && (wpn_slot == PC_WPN_KNIFE || (g_weapons_owned & (1u << wpn_slot)))) {
+                        PcWeaponSwitchPacket req; memset(&req, 0, sizeof(req));
+                        req.hdr.type = PC_PACKET_WEAPON_SWITCH;
+                        req.hdr.sequence = ++allocate_seq;
+                        req.requested_slot = (unsigned char)wpn_slot;
+                        sendto(sock, (const char *)&req, sizeof(req), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+                    }
+                }
                 /* Real, FFXI-style list inventory toggle + navigation (founder real-time,
                    2026-08-30: "ffxi style list affordances first"). 'I' opens/closes the real
                    list overlay (draw_inventory_list below); while open, Up/Down step the real
@@ -1469,6 +1534,10 @@ int main(int argc, char **argv) {
             } else if (hdr.type == PC_PACKET_INVENTORY_UPDATE && (size_t)n >= sizeof(PcInventoryUpdatePacket)) {
                 PcInventoryUpdatePacket iu; memcpy(&iu, buf, sizeof(iu));
                 memcpy(g_inventory, iu.slots, sizeof(g_inventory));
+            } else if (hdr.type == PC_PACKET_WEAPON_OWNED && (size_t)n >= sizeof(PcWeaponOwnedPacket)) {
+                PcWeaponOwnedPacket wu; memcpy(&wu, buf, sizeof(wu));
+                g_weapons_owned = wu.weapons_owned;
+                g_current_weapon = wu.current_weapon;
             }
         }
 
@@ -1740,6 +1809,7 @@ int main(int argc, char **argv) {
             if (latest_snap.echo_cmd_time_ms != 0 && latest_snap.echo_cmd_time_ms <= now) {
                 draw_ping_indicator(win_w, win_h, now - latest_snap.echo_cmd_time_ms);
             }
+            draw_weapon_hud(win_w, win_h, g_current_weapon, g_weapons_owned);
         }
         if (welcomed && now - last_snapshot_ms > PC_CLIENT_WEAK_MS) {
             draw_weak_connection_indicator(win_w, win_h, now - last_snapshot_ms);

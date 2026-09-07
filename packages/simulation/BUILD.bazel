@@ -245,6 +245,23 @@ cc_test(
     deps = [":inventory"],
 )
 
+# weapon -- the real, PARENA-compiled "arsenal" weapon-switching decisions (which item ids are
+# weapons, whether a player may switch to a weapon slot they haven't found yet). Generated from
+# PARENA/stdlib/papercraft/weapon_mod.prn via `parena build`, committed here.
+cc_library(
+    name = "weapon",
+    srcs = ["weapon_mod.c"],
+    hdrs = ["parena_runtime.h"],
+    alwayslink = True,
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "weapon_mod_test",
+    srcs = ["weapon_mod_test.c"],
+    deps = [":weapon"],
+)
+
 # pickup -- the real, PARENA-compiled pickup-radius decision for PAPERCRAFT's own GTA3-style
 # walk-over item pickup. Generated from PARENA/stdlib/papercraft/pickup_mod.prn via
 # `parena build`, committed here.

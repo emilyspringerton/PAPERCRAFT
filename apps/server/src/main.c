@@ -233,6 +233,26 @@ typedef struct {
        explicitly deferred gap for this first slice, same as position/XP were before persistence
        existed at all; a fresh spawn AND a real restart-restore both start empty for now. */
     PcInventorySlot inventory[PC_INVENTORY_SLOTS];
+
+    /* Real, per-player "arsenal" ownership (2026-09-07, founder real-time: "not all characters
+       get all aresenals you have to find a [shotgun] etc"). Bit N set = PC_WPN_* slot N has been
+       found (a PC_ITEM_WPN_* entity pickup) and is real, usable arsenal for this player -- see
+       on_papercraft_weapon_switch_allowed's own real gate. Server-internal only, same real
+       "private to the owner" treatment as `inventory` above -- never broadcast in
+       PcSnapshotPacket, only ever sent to this exact player via PcWeaponOwnedPacket.
+       PC_WPN_KNIFE needs no bit here at all (the universal baseline every character always has,
+       the mod's own real rule), so this starts at 0 (memset), not pre-seeded with bit 0 set. NOT
+       yet persisted across a restart, same real, honest, explicitly-named gap `inventory` above
+       already carries (packages/common/papercraft_persist.h's own PcSaveRecord has neither
+       field yet) -- a fresh spawn and a real restart-restore both start with nothing owned but
+       the baseline Knife. */
+    unsigned int weapons_owned;
+    /* current_weapon -- real, server-authoritative PC_WPN_* slot this player currently has
+       equipped. NOT part of PcPlayerState/the snapshot broadcast (see PcWeaponOwnedPacket's own
+       doc comment in papercraft_protocol.h for the real wire-budget reason) -- confirmed back to
+       this exact player only, via send_weapon_owned_update, after every switch attempt. Starts
+       at PC_WPN_KNIFE (0, memset default), the universal baseline every character has. */
+    unsigned char current_weapon;
 } PlayerSlot;
 
 /* Real, "simple but trackable" GTA3-style dropped-item entity -- see packages/common/
@@ -261,6 +281,12 @@ int on_papercraft_item_for_object_destroyed(int material);
 int on_papercraft_inventory_stack_max(int item_id);
 int on_papercraft_inventory_can_stack(int existing_item_id, int incoming_item_id);
 int on_papercraft_pickup_radius_millis(void);
+/* Real PARENA-compiled "arsenal" weapon decisions (packages/simulation/weapon_mod.c) -- see
+   PcWeaponSwitchPacket/PcWeaponOwnedPacket's own doc comments in papercraft_protocol.h for the
+   full real design (2026-09-07, founder real-time: "aresnal (weapon switching)... not all
+   characters get all aresenals you have to find a [shotgun] etc"). */
+int on_papercraft_weapon_item_slot(int item_id);
+int on_papercraft_weapon_switch_allowed(int owned_mask, int requested_slot);
 
 /* I32Fn0 -- real function-pointer shape for a dynamically-loaded, zero-arg I32-returning mod
    function, same real shape apps/dynmod_poc's own I32Fn0 already proved dlopen/dlsym-compatible.
@@ -765,6 +791,19 @@ static void send_inventory_update(int sock, PlayerSlot *s) {
     sendto(sock, &iu, sizeof(iu), 0, (struct sockaddr *)&s->addr, s->addr_len);
 }
 
+/* send_weapon_owned_update -- real, whole-bitmask sync to ONE specific player, same real
+   "private to the owner" convention send_inventory_update above already establishes. Called
+   once, right after granting a new weapon (never on every tick -- this is an event, not
+   continuous state). */
+static void send_weapon_owned_update(int sock, PlayerSlot *s) {
+    PcWeaponOwnedPacket wu;
+    memset(&wu, 0, sizeof(wu));
+    wu.hdr.type = PC_PACKET_WEAPON_OWNED;
+    wu.weapons_owned = s->weapons_owned;
+    wu.current_weapon = s->current_weapon;
+    sendto(sock, &wu, sizeof(wu), 0, (struct sockaddr *)&s->addr, s->addr_len);
+}
+
 /* try_add_item_to_inventory -- thin, real per-player wrapper around packages/common/
    papercraft_inventory.h's own real, pure, independently-tested pc_try_add_item_to_inventory
    (packages/common/papercraft_inventory_test.c). Pulled out to a shared header (2026-08-30,
@@ -1168,6 +1207,31 @@ int main(int argc, char **argv) {
                     }
                     break;
                 }
+            } else if (hdr.type == PC_PACKET_WEAPON_SWITCH && (size_t)n >= sizeof(PcWeaponSwitchPacket)) {
+                /* Real "mods first everything" gameplay, same shape as PC_PACKET_ALLOCATE_TALENT
+                   right above: the actual gate decision (does this player actually own this
+                   weapon slot, or is it the universal baseline Knife?) is the real PARENA-
+                   compiled on_papercraft_weapon_switch_allowed -- this handler only applies the
+                   real consequence once the mod says yes. */
+                for (int i = 0; i < PC_MAX_PLAYERS; i++) {
+                    PlayerSlot *s = &g_slots[i];
+                    if (!s->active || s->addr.sin_addr.s_addr != from.sin_addr.s_addr ||
+                        s->addr.sin_port != from.sin_port) {
+                        continue;
+                    }
+                    PcWeaponSwitchPacket req;
+                    memcpy(&req, buf, sizeof(req));
+                    int slot = req.requested_slot;
+                    if (on_papercraft_weapon_switch_allowed((int)s->weapons_owned, slot)) {
+                        s->current_weapon = (unsigned char)slot;
+                        printf("Player slot %d switched to weapon slot %d.\n", i, slot);
+                    }
+                    /* Real, server-authoritative confirmation either way -- allowed (the switch
+                       actually happened) or denied (current_weapon is unchanged, sent back as-is
+                       so this client's own HUD never has to guess). */
+                    send_weapon_owned_update(sock, s);
+                    break;
+                }
             } else if (hdr.type == PC_PACKET_INTERACT && (size_t)n >= sizeof(PcInteractPacket)) {
                 /* Real "punch/interact" -- the minimal real input needed to exercise the already-
                    built Paper Engine live, without inventing a real combat system this sandbox
@@ -1389,6 +1453,19 @@ int main(int argc, char **argv) {
                             g_entities[e].active = 0;
                             broadcast_entity_despawn(sock, e);
                             send_inventory_update(sock, s);
+
+                            /* Real "arsenal" unlock (2026-09-07): a picked-up item that's
+                               actually a weapon (on_papercraft_weapon_item_slot's own real
+                               mapping, -1 for anything that isn't) grants real, permanent access
+                               to that weapon slot -- see PlayerSlot::weapons_owned's own doc
+                               comment for why this is a permanent unlock, not a consumable. */
+                            int wpn_slot = on_papercraft_weapon_item_slot(g_entities[e].item_id);
+                            if (wpn_slot >= 0) {
+                                s->weapons_owned |= (1u << wpn_slot);
+                                printf("Player slot %d found weapon slot %d (weapons_owned now 0x%x).\n",
+                                       i, wpn_slot, s->weapons_owned);
+                                send_weapon_owned_update(sock, s);
+                            }
                         }
                     }
                 }

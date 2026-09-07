@@ -28,6 +28,8 @@
 #define PC_PACKET_ENTITY_SPAWN     8
 #define PC_PACKET_ENTITY_DESPAWN   9
 #define PC_PACKET_INVENTORY_UPDATE 10
+#define PC_PACKET_WEAPON_SWITCH    11 /* client -> server: "let me switch to this weapon slot" */
+#define PC_PACKET_WEAPON_OWNED     12 /* server -> owning client only: real, whole owned-weapons bitmask, resent on every change */
 
 /* Connect-ticket auth -- direct port of racer_protocol.h's own RC_TICKET_* wire format. Minted
  * by IDUNA's PapercraftTicketHandler (internal/http/handlers/papercraft_ticket.go) from a real
@@ -145,6 +147,57 @@ typedef struct {
     int ability[PC_ABILITY_COUNT]; /* real construct talent ranks -- see PC_ABILITY_* above */
 } PcPlayerState;
 
+/* PC_WPN_*: real weapon-slot constants -- must match PARENA/stdlib/papercraft/weapon_mod.prn's
+ * own weapon-slot-* functions byte-for-byte. Direct port of SHANKPIT's own WPN_KNIFE/MAGNUM/AR/
+ * SHOTGUN/SNIPER/KATANA roster (packages/common/protocol.h in SHANKPIT) -- WPN_MISSILE excluded
+ * from this first slice (a travelling-projectile weapon type this sandbox's combat has no
+ * hit-detection story for yet). PC_WPN_KNIFE is the real, universal baseline every character
+ * always has (on_papercraft_weapon_switch_allowed's own real rule) -- "not all characters get
+ * all arsenals" means every OTHER slot must be found in the world first. */
+#define PC_WPN_KNIFE   0
+#define PC_WPN_MAGNUM  1
+#define PC_WPN_AR      2
+#define PC_WPN_SHOTGUN 3
+#define PC_WPN_SNIPER  4
+#define PC_WPN_KATANA  5
+#define PC_WPN_COUNT   6
+
+/* PcWeaponSwitchPacket -- real client request, one per keypress/scroll (not a continuous stream
+ * like PcUserCmdPacket), to switch to a specific weapon slot. The real DECISION (does this
+ * player actually own this weapon, or is it the universal baseline Knife?) is PARENA's own --
+ * see apps/server/src/main.c's own real call into on_papercraft_weapon_switch_allowed
+ * (packages/simulation/weapon_mod.c) for the actual gate, same "mod decides, host applies"
+ * split every other real mod call site in this monorepo already uses. */
+typedef struct {
+    PcHeader hdr;
+    unsigned char requested_slot; /* PC_WPN_* */
+} PcWeaponSwitchPacket;
+
+/* PcWeaponOwnedPacket -- real, whole-state sync to ONE specific player, same "private to the
+ * owner, never broadcast" convention PcInventoryUpdatePacket's own doc comment already
+ * establishes for inventory contents. Carries BOTH weapons_owned (which slots this player has
+ * found) and current_weapon (their own real, server-authoritative confirmation of which slot is
+ * actually equipped right now, resent after every switch attempt -- allowed or denied -- so this
+ * client's own HUD never has to guess or optimistically assume a switch landed).
+ *
+ * Real, deliberate v0 scope: current_weapon is NOT also broadcast to every OTHER player in
+ * PcSnapshotPacket, unlike position/yaw. Adding it there was tried and reverted (2026-09-07) --
+ * it pushed sizeof(PcSnapshotPacket) from 1436 to 1500 bytes, past the real 1472-byte
+ * (Ethernet MTU minus IP/UDP headers) unfragmented-UDP-packet budget this struct's own doc
+ * comment already names as a real, deliberate ceiling. Since this sandbox has no weapon
+ * rendering or combat built yet (NORTHSTAR.md's own "no combat requirement to start" --
+ * checked directly, nothing currently draws a viewmodel or reacts to what an opponent is
+ * holding), broadcasting it to everyone would have been real, premature wire cost for a value
+ * nothing on the client side does anything with yet. Real, honest, named follow-up: once real
+ * combat/weapon rendering lands, this needs a real wire-budget pass (a packed per-player byte
+ * array alongside `active[]`, not a field inside PcPlayerState itself, is the likely shape) to
+ * add it back without re-exceeding the same 1472-byte ceiling. */
+typedef struct {
+    PcHeader hdr;
+    unsigned int weapons_owned; /* bit N set = PC_WPN_* slot N has been found and is usable */
+    unsigned char current_weapon; /* PC_WPN_*, this client's own currently-equipped slot */
+} PcWeaponOwnedPacket;
+
 /* PC_MAX_PLAYERS -- real, bounded slot count for Phase 0. Not derived from any real capacity
  * planning yet (this is a real single-node persistent world, not a fixed-size match roster the
  * way WEAKNIGHT_BEDROCK_RACERS' own RC_MAX_VEHICLES is) -- a real, generous-enough number to
@@ -218,6 +271,24 @@ typedef struct {
  * item-scrap constant byte-for-byte. */
 #define PC_ITEM_NONE  0
 #define PC_ITEM_SCRAP 1
+
+/* PC_ITEM_WPN_*: real, findable weapon entities (2026-09-07, founder real-time: "not all
+ * characters get all aresenals you have to find a [shotgun] etc"). Spawned/picked up through the
+ * exact same real GTA3-style walk-over entity system PC_ITEM_SCRAP already uses
+ * (PcEntitySpawnPacket/PcEntityDespawnPacket) -- weapons are real world entities, not a separate
+ * mechanic. Must match PARENA/stdlib/papercraft/weapon_mod.prn's own weapon-mod-item-* constants
+ * byte-for-byte. Picking one up sets the matching bit in the finder's own real, per-player
+ * weapons_owned bitmask (apps/server/src/main.c) -- a permanent unlock, not a consumable; losing
+ * the physical pickup from inventory later (this repo has no item-loss mechanic yet regardless)
+ * would not revoke access, same real "you now know how to use this" precedent a Metroidvania-
+ * style permanent weapon unlock already establishes, named explicitly here since it's a real,
+ * deliberate v0 scope choice, not an oversight. */
+#define PC_ITEM_WPN_KNIFE   2
+#define PC_ITEM_WPN_MAGNUM  3
+#define PC_ITEM_WPN_AR      4
+#define PC_ITEM_WPN_SHOTGUN 5
+#define PC_ITEM_WPN_SNIPER  6
+#define PC_ITEM_WPN_KATANA  7
 
 typedef struct {
     PcHeader hdr;
