@@ -17,8 +17,12 @@ online-only, mods-first PARENA), and the real relationship to `WEAKNIGHT_BEDROCK
 
 ## Status
 
-New repo (2026-08-28). NORTHSTAR only — no gameplay code yet. `SHANKPIT_CONSTRUCT.txt` (this
-repo, root) is the real reference snapshot `NORTHSTAR.md`'s own citations point into.
+**Corrected (SAGA audit, 2026-09-07): this line was stale.** Real, live `apps/server`/`apps/client`
+C (~3500 lines) exists now — a full progression/talent/persistence/paper-engine/weapon system and
+14+ real PARENA mods (weapon switching, item drops, and more under
+`PARENA/stdlib/papercraft/*.prn`). `NORTHSTAR.md` is the accurate, up-to-date source of truth for
+current status — read that, not this line, for what's actually built. `SHANKPIT_CONSTRUCT.txt`
+(this repo, root) remains the real reference snapshot `NORTHSTAR.md`'s own citations point into.
 
 ## Mods first, everything
 
