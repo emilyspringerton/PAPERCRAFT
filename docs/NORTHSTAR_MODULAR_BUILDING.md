@@ -147,6 +147,23 @@ proven out either — porting the tuning numbers is not the same as porting a ne
 controller, and PAPERCRAFT's own real "server-authoritative, always" constraint makes getting that
 second part right MORE load-bearing there than it has been for SHANKPIT so far, not less.
 
+## A real, concrete candidate for the first scriptable thing: GFD's EduVM
+
+Founder, direct: *"GFD has the primatives for an interactive world already built in we could build
+a simple movie style simulation with gates and stuff like halflife with the eduvm alredy built
+into it it can be our very first scriptable thing that we just drop right into the level
+editor."* Checked directly, not assumed: `GoblinFoxDragon/packages/education/edu_vm.h`/`.c` is a
+real, small, already-working sandboxed bytecode VM — bounded stack (`EDU_VM_STACK_MAX`), bounded
+vars/instructions (`EduVmLimits`, with a real "halted due to limit" outcome, not an unbounded
+loop risk), and a real `EduWorldState` binding surface (`edu_bindings.h`) for scripted logic to
+actually read/affect the world it runs in. This is a genuinely strong, already-built candidate for
+the room/world tier's own scripting layer (gates, triggers, a Half-Life-style "the movie happens
+around you" sequenced event) named all the way back in the original SHANKPIT scoping session
+(`EMILY/BACKLOG.md` SECTION 459's own story-goal framing) — worth a real, direct look before
+building any bespoke scripting mechanism for this system, rather than assuming PARENA is the only
+real option for the room/world tier's own decision logic the way it is for the box tier's material/
+destruction decisions above.
+
 ## Real, honest current status
 
 **Nothing in this doc is built yet.** SHANKPIT's own NOCK editor (`EMILY/BACKLOG.md` SECTION 459)
