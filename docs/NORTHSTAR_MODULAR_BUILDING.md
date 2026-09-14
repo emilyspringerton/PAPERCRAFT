@@ -37,12 +37,16 @@ different object type at each scale:
 **Real, decided: SHANKPIT is the actual client.** Founder, direct: *"shankpit is the actual client
 so we should be able to port papercraft levels into shankpit before it is material aware because
 papercraft levels are just geometry."* A PAPERCRAFT-authored room/world is, at the geometry layer,
-just a set of boxes — the exact same shape SHANKPIT's own `Wall` already is. That means SHANKPIT's
-own native level loader (the real, current gap this doc's own companion work is closing —
-`packages/map/map.c` gaining a JSON-loading path) is not just a SHANKPIT-local nicety: it is also
-the real, first, concrete step toward actually PLAYING a PAPERCRAFT-authored level, well before
-SHANKPIT's own renderer/loader needs to understand `PAPER_MATERIAL_*` destructibility semantics at
-all. Material-awareness is a real, later layer on top of a working geometry pipeline, not a
+just a set of boxes. **Real, shipped, same day (SHANKPIT commit `19f8b6c`)**: SHANKPIT's own
+native level loader now exists -- real, found-live correction along the way, this doc's own
+earlier draft assumed `packages/map/map.h`'s `Wall` struct (used only by a separate, broken,
+not-in-CI prototype) was the real target; the actual loader was built against the real, playable
+client's own `physics.h`/`Box{x,y,z,w,h,d}` geometry instead (`packages/world/level_boxes.h` + a
+`--level <path>` flag on both `apps/server`/`apps/lobby`, live-verified end to end). That loader
+is not just a SHANKPIT-local nicety: it is also the real, first, concrete step toward actually
+PLAYING a PAPERCRAFT-authored level, well before SHANKPIT's own renderer/loader needs to
+understand `PAPER_MATERIAL_*` destructibility semantics at all. Material-awareness is a real,
+later layer on top of a working geometry pipeline, not a
 prerequisite for SHANKPIT to load a room PAPERCRAFT (or its own future room builder) produced.
 
 A room builder is this mechanism with boxes as the object type. A map builder is the exact same
