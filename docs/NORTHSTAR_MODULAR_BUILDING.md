@@ -208,19 +208,121 @@ into one codebase is a genuinely undecided future question, not assumed either w
 both repos as real, independently-necessary, ongoing concerns until/unless a future founder
 decision says otherwise.
 
+## Real, decided (2026-09-17): the object library, and NOCK goes multi-tenant
+
+Founder real-time, resolving several of this doc's own open questions below directly: *"can we
+add a object library? same affordances for adding a level but if im creating just a flat ish
+large cube to act as like a city block with curbs i dont want that object to clutter up my
+levels list - embeddable levels still totally makes sense... but we need simpler affordances for
+just like objects to put into the world like lamp posts etc"* → *"the rigid body physics system
+to a certain extent is part of the objects system yea it really is with the masses of things"* →
+*"lets treat PAPERCRAFT as our sandbox for building those affordances - shankpit is more focused
+on creating smaller levels that can be stitched together in a story"* → *"lets make our nock
+tools multi tenant - assume that assets built for shankpit should work for papercraft in terms
+of the data... if i build a level for shankpit i should be able to plop it down on the map for
+papercraft"* → *"we are going to need a chunk loading system for papercraft so it works like
+world of warcraft with seamless level loading."*
+
+**A real primitive already exists that this is NOT reinventing**: `internal/shankpit`'s own
+`LevelObject{RefLevelID, X, Y, Z, RotY, PlaneVisible, PlaneSolid}` already lets one level embed
+another as a placed child ("a map is a composition of levels... its like a photoshop doc in a
+photoshop doc" — the founder's own prior quote, already in that code). **Embeddable levels are
+not the gap.** The gap is that every embeddable level, including a one-box curb or a single
+lamp post, still shows up in the SAME levels list as a real, full gas station — no lighter-weight
+tier exists below "level." That's the real, concrete thing this section adds: a genuinely
+separate **Objects** tier, distinct from Levels, for small, reusable, single-or-few-box pieces
+that would clutter a level list — same real placement mechanism this doc's own "one mechanism,
+three scales" section already established (box/room/world), just naming the tier the founder
+is pointing at directly rather than leaving it implicit.
+
+**"Rigid-body physics is part of the objects system" — real, and it's not a new idea, it's a
+naming of something this doc already built**: the two-tier split above (cheap, unlimited
+structural boxes vs. the budgeted 8 real Paper Engine objects with HP/fragments) IS the physics
+tier split, not a separate system next to it. A structural box has no mass, no forces, never
+moves on its own — exactly the "scripted decision, not simulation" category
+`SHANKPIT/docs/STORY_SYSTEM_NORTHSTAR.md`'s own "Explicitly NOT part of this system: real
+physics objects" section named as genuinely out of scope for door/character/trigger scripting.
+A Paper Engine object, once it has real mass/forces (the founder's own HL2 cinder-block-on-a-
+teeter-totter reference from that same SHANKPIT thread), is the SAME real, budgeted, opt-in tier
+this doc already scoped — PAPERCRAFT, not SHANKPIT, is where that tier's own real mass/force
+simulation should actually get built, for the same reason PAPERCRAFT is already this doc's own
+target for "real rooms and environments": SHANKPIT's physics model has no mass/rigid-body concept
+at all today (checked directly, same finding as the SHANKPIT-side doc), and PC_WO_MAX_OBJECTS'
+own real wire-budget ceiling is exactly the right place to hang "how many things can have real
+physics at once" off of — it already exists for exactly this reason.
+
+**SHANKPIT vs. PAPERCRAFT's own real division of labor, stated plainly, resolving any ambiguity
+in this doc's earlier sections**: SHANKPIT stays the box-tier proving ground AND the Story
+System's own home (`STORY_SYSTEM_NORTHSTAR.md` — discrete, hand-authored levels stitched
+together via scripted entrance/exit markers and a `next-chapter` history function, a Half-Life-
+shaped game). PAPERCRAFT is where room/world-tier composition, materials-from-day-one, the
+Paper Engine's own real physics-object tier, AND the world-tier WoW-style streaming below all
+actually get built — a GTA3-shaped open city, not a level-select game. Both are real, both
+matter, neither subsumes the other; this doc's own earlier "siblings, not a shared dependency"
+decision already covers the ENGINE code staying independent — what's new below is that the
+AUTHORING TOOL (NOCK) is not an engine and was never bound by that rule.
+
+**NOCK multi-tenancy, concretely, resolving this doc's own "room and world get their own real
+IDUNA-backed registries" open question**: checked directly (this session's own research pass)
+— `internal/nock`'s existing texture/animation/door-script stores are ALREADY real, generic,
+game-agnostic tables (no game name anywhere in their schema). The ONLY part of NOCK that is
+SHANKPIT-specific today is the level/box geometry store itself (`internal/shankpit/
+level_store.go`, table `shankpit_levels`, a real, deliberate copy-paste of `internal/brawlpit`'s
+own identical shape for a third game already, per that file's own doc comment). "Multi-tenant
+NOCK" is therefore NOT a new capability being invented — it's applying the same genericization
+`internal/nock`'s own texture/animation/door-script stores already got, to the one remaining
+piece that doesn't have it yet, so a THIRD copy-pasted `internal/papercraft` package is never
+needed. The new **Objects** tier (above) is the right place to build this multi-tenant from day
+one, rather than migrating already-live SHANKPIT/BRAWLPIT level data: a new, generic
+`nock_objects` table carrying a real `game` tenant column (`"shankpit"` | `"papercraft"` | ...)
+alongside the same real box-geometry shape `level_boxes.h`/`Wall` already established — the same
+literal JSON an object's own `boxes` array carries is valid input to BOTH SHANKPIT's real
+`level_boxes_load_from_file` scanner and a PAPERCRAFT-side loader this doc's own "papercraft
+levels are just geometry" section already committed to building, unmodified, engine-agnostic
+data, two separate real consumers — exactly `GOLDENBAND`'s own "no engine dependency in the
+asset" principle (currently scoped to animation only, `.gband`/`.gskel`/`.gmesh`), extended here
+to cover box/level geometry too, for the first time. Existing `shankpit_levels`/`brawlpit_levels`
+tables are left exactly as they are — a real, later, separate migration to fold them into the
+same multi-tenant shape is named, not attempted here.
+
+**World-tier chunk streaming, committed as real, scoped, PAPERCRAFT-only work — the WoW
+reference this doc's own "World-tier socket" section already named, now actually being built**:
+checked directly, no true dynamic chunk load/unload exists anywhere in this monorepo yet.
+`GoblinFoxDragon/server/worldapi`'s `ProceduralWorldStore` (deterministic per-`(sceneID, chunkX,
+chunkZ)` procedural generation — `urbanChunk`/`meadowChunk`/`hillsChunk`/etc.) is the real,
+closest precedent and already the source PAPERCRAFT's own current fixed 3×3 window consumes —
+but that window is explicitly, honestly non-streaming today (`PAPERCRAFT/NORTHSTAR.md`'s own
+words). Real, phased plan, not attempted in one pass:
+1. Generalize `ProceduralWorldStore`'s existing per-chunk generation to also serve real,
+   NOCK-authored chunks (an "Objects"/room placed at a given `(chunkX, chunkZ)`) alongside
+   purely-procedural ones — the same real "author it, or generate it, both produce the same real
+   chunk shape" split `GBAND_FORMAT.md`'s own `authorship.kind` (`mocap | human | generative`)
+   field already established for animation, applied to world chunks.
+2. Real dynamic load/unload around the player's own position (replacing the fixed 3×3 window),
+   with a genuine streaming seam at chunk boundaries — the real, hard part this doc's own
+   "World-tier socket" section already flagged as "deliberately LARGER architecture than what's
+   built today," now the next real target instead of a deferred question.
+3. SHANKPIT explicitly does NOT get this system — its own Story System stays discrete,
+   hand-authored, scripted-transition levels (a real, different, correct shape for a level-based
+   game), not a streaming open world.
+
 ## Open questions (real, not resolved here)
 
 - Exact room-tier and world-tier socket schema (field-for-field) — named in shape above, not
   specified as a real struct/table anywhere yet.
 - Whether raising `PC_WO_MAX_OBJECTS` further is worth it before or after a first real room ships,
   and what the actual relevance-filtering mechanism would look like — not scoped.
-- Whether "room" and "world" get their own real IDUNA-backed registries (mirroring `internal/
-  shankpit`/`internal/brawlpit`'s own established pattern) or persist through PAPERCRAFT's own
-  existing flat-file `PcWorldObjectFile`-style format extended upward — not decided.
+- The new `nock_objects` table's own exact schema (columns beyond `game` + the existing box JSON
+  shape — does an Object need its own separate `name`/`prompt`/thumbnail fields the way
+  `nock_textures` has, or is it minimal on purpose) — not specified as a real migration/struct
+  yet, resolved in direction only above.
 - A real, third named consumer, mechanism genuinely uncertain: founder, direct but explicitly
   unsure — *"but the papercraft engine gets somehow also shared into the GFD lineage for world
   building."* `GoblinFoxDragon`/DragonsNShit is voxel-based (`NORTHSTAR.md`'s own "Not voxels"
   section already names it as a real sibling product, not a replacement or a competing engine) --
   how a non-voxel box/room/world system shares anything concrete with a voxel world-builder is a
   real, open, unsolved question, not a small detail. Named here so it isn't lost, genuinely not
-  designed against.
+  designed against. (The world-tier chunk-streaming plan just above reuses `worldapi`'s own real
+  procedural-chunk mechanism, which IS shared GoblinFoxDragon infrastructure — a real, partial
+  answer to this question, not a full one: chunk SERVING can share code today; chunk
+  AUTHORING/geometry still does not, and isn't claimed to here.)
