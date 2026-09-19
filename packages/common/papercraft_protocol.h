@@ -29,6 +29,8 @@
 #define PC_PACKET_ENTITY_DESPAWN   9
 #define PC_PACKET_INVENTORY_UPDATE 10
 #define PC_PACKET_WEAPON_SWITCH    11 /* client -> server: "let me switch to this weapon slot" */
+#define PC_PACKET_SNAPSHOT_LZ4     13 /* server -> client: LZ4-compressed PcSnapshotPacket (see PcSnapshotLz4Header), only sent to clients that advertised PC_CAP_LZ4 */
+#define PC_CAP_LZ4                 1  /* capability bit: one extra byte AFTER PcConnectPacket in CONNECT (absent = old client, gets plain snapshots) */
 #define PC_PACKET_WEAPON_OWNED     12 /* server -> owning client only: real, whole owned-weapons bitmask, resent on every change */
 
 /* Connect-ticket auth -- direct port of racer_protocol.h's own RC_TICKET_* wire format. Minted
@@ -56,6 +58,16 @@ typedef struct {
     PcHeader hdr;
     unsigned char client_id;
 } PcWelcomePacket;
+
+/* PcSnapshotLz4Header -- followed by `comp_len` bytes of LZ4 block data that decompress to exactly raw_len == sizeof(PcSnapshotPacket).
+ * Why (2026-09-19, founder on a phone modem: "weak connection 170", level appearing minutes late): PcSnapshotPacket is a fixed
+ * 1436 bytes (1464 on the wire), almost all zeros -- above the 1280-1428 byte path MTU common on mobile carriers, so it fragments
+ * and carriers drop fragments while small packets (WELCOME, USERCMD) still get through. Compressed it is ~200 bytes. */
+typedef struct {
+    PcHeader hdr;
+    unsigned short raw_len;
+    unsigned short comp_len;
+} PcSnapshotLz4Header;
 
 /* PcRejectPacket -- a real, visible rejection (bad/expired ticket, no
  * PAPERCRAFT_TICKET_SECRET configured server-side) instead of a silent hang -- same real

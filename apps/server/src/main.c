@@ -39,6 +39,7 @@
 #include "../../../packages/common/http_client.h"
 #include "../../../packages/common/hmac_sha256.h"
 #include "../../../packages/common/papercraft_protocol.h"
+#include "../../../packages/common/lz4mini.h"
 #include "../../../packages/common/papercraft_inventory.h"
 #include "../../../packages/common/papercraft_world.h"
 #include "../../../packages/common/paper_mesh.h"
@@ -195,6 +196,7 @@ static void spawn_falling_fragment(int object_idx, int fragment_idx) {
 
 typedef struct {
     int active;
+    int lz4; /* client advertised PC_CAP_LZ4 on its latest CONNECT */
     PcPlayerState state;
     struct sockaddr_in addr;
     socklen_t addr_len;
@@ -1134,6 +1136,8 @@ int main(int argc, char **argv) {
                 memcpy(s->player_id, player_id, 16);
                 s->addr = from;
                 s->addr_len = from_len;
+                s->lz4 = ((size_t)n > sizeof(PcConnectPacket) && (((const unsigned char *)buf)[sizeof(PcConnectPacket)] & PC_CAP_LZ4)) ? 1 : 0;
+                if (getenv("PAPERCRAFT_NO_LZ4")) s->lz4 = 0; /* A/B switch: force plain snapshots */
                 /* Real, deliberate reset -- a CONNECT (fresh claim or a real reconnect) counts as
                    real activity for PC_PLAYER_TIMEOUT_MS's own purposes, same as any other real
                    client-to-server packet. Without this, a freshly-claimed slot with no USERCMD
@@ -1682,6 +1686,18 @@ int main(int argc, char **argv) {
                    PcSnapshotPacket::echo_cmd_time_ms's own doc comment for why this is a single
                    reused field, not a real per-player array. */
                 snap.echo_cmd_time_ms = g_slots[i].latest_cmd_time_ms;
+                if (g_slots[i].lz4) {
+                    unsigned char wire[sizeof(PcSnapshotLz4Header) + sizeof(PcSnapshotPacket)];
+                    int cn = lz4m_compress((const unsigned char *)&snap, (int)sizeof(snap), wire + sizeof(PcSnapshotLz4Header), (int)sizeof(PcSnapshotPacket));
+                    if (cn > 0) {
+                        PcSnapshotLz4Header lh; memset(&lh, 0, sizeof(lh));
+                        lh.hdr.type = PC_PACKET_SNAPSHOT_LZ4; lh.hdr.client_id = snap.hdr.client_id; lh.hdr.sequence = snap.hdr.sequence;
+                        lh.raw_len = (unsigned short)sizeof(snap); lh.comp_len = (unsigned short)cn;
+                        memcpy(wire, &lh, sizeof(lh));
+                        sendto(sock, wire, sizeof(lh) + (size_t)cn, 0, (struct sockaddr *)&g_slots[i].addr, g_slots[i].addr_len);
+                        continue;
+                    }
+                }
                 sendto(sock, &snap, sizeof(snap), 0, (struct sockaddr *)&g_slots[i].addr, g_slots[i].addr_len);
             }
             }

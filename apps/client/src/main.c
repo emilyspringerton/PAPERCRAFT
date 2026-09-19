@@ -52,6 +52,7 @@
 
 #include "../../../packages/common/http_client.h"
 #include "../../../packages/common/papercraft_protocol.h"
+#include "../../../packages/common/lz4mini.h"
 #include "../../../packages/common/papercraft_world.h"
 #include "../../../packages/common/paper_mesh.h"
 #include "../../../packages/common/hud_text.h"
@@ -208,6 +209,15 @@ typedef struct {
     char error[128];
     int  submitting;
 } LoginScreenState;
+
+/* CONNECT = PcConnectPacket + one capability byte (PC_CAP_LZ4 unless --no-lz4). Old servers ignore the extra byte. */
+static int g_client_lz4 = 1;
+static void send_connect_packet(int sock, const PcConnectPacket *cp, const struct sockaddr_in *to) {
+    unsigned char wire[sizeof(PcConnectPacket) + 1];
+    memcpy(wire, cp, sizeof(*cp));
+    wire[sizeof(PcConnectPacket)] = g_client_lz4 ? PC_CAP_LZ4 : 0;
+    sendto(sock, (const char *)wire, sizeof(wire), 0, (const struct sockaddr *)to, sizeof(*to));
+}
 
 static void draw_login_screen(SDL_Window *win, int win_w, int win_h, const LoginScreenState *st) {
     glClearColor(0.05f, 0.06f, 0.09f, 1.0f);
@@ -1176,7 +1186,7 @@ int main(int argc, char **argv) {
     PcConnectPacket connect_pkt; memset(&connect_pkt, 0, sizeof(connect_pkt));
     connect_pkt.hdr.type = PC_PACKET_CONNECT;
     memcpy(connect_pkt.ticket, ticket, PC_TICKET_TOTAL_LEN);
-    sendto(sock, (const char *)&connect_pkt, sizeof(connect_pkt), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+    send_connect_packet(sock, &connect_pkt, &server_addr);
     printf("CONNECT sent to %s:%d, retrying until WELCOME lands...\n", server_host, server_port);
 
     glEnable(GL_DEPTH_TEST);
@@ -1305,6 +1315,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[ai], "--weak-seconds") == 0) { int v = atoi(argv[ai + 1]); if (v >= 1 && v <= 300) weak_ms = (unsigned int)v * 1000u; }
         else if (strcmp(argv[ai], "--stale-seconds") == 0) { int v = atoi(argv[ai + 1]); if (v >= 5 && v <= 300) stale_ms = (unsigned int)v * 1000u; }
     }
+    for (int ai = 1; ai < argc; ai++) if (strcmp(argv[ai], "--no-lz4") == 0) g_client_lz4 = 0;
     int reconnecting = 0;
     int ever_welcomed = 0;
     /* Real, live bug found and fixed (2026-09-02, founder real-time: "at some point i just get
@@ -1485,7 +1496,7 @@ int main(int argc, char **argv) {
                 }
             }
             if (can_send) {
-                sendto(sock, (const char *)&connect_pkt, sizeof(connect_pkt), 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+                send_connect_packet(sock, &connect_pkt, &server_addr);
             }
             last_connect_retry_ms = now;
         }
@@ -1515,6 +1526,13 @@ int main(int argc, char **argv) {
                 rej.reason[PC_REJECT_REASON_MAX] = '\0';
                 snprintf(reject_reason, sizeof(reject_reason), "%s", rej.reason);
                 fprintf(stderr, "CONNECT rejected: %s\n", reject_reason);
+            } else if (hdr.type == PC_PACKET_SNAPSHOT_LZ4 && (size_t)n > sizeof(PcSnapshotLz4Header)) {
+                PcSnapshotLz4Header lh; memcpy(&lh, buf, sizeof(lh));
+                if (lh.raw_len == sizeof(PcSnapshotPacket) && (size_t)lh.comp_len <= (size_t)n - sizeof(lh)) {
+                    PcSnapshotPacket scratch; /* never decode into latest_snap directly: a corrupt packet must not leave it half-written */
+                    int dn = lz4m_decompress((const unsigned char *)buf + sizeof(lh), lh.comp_len, (unsigned char *)&scratch, (int)sizeof(scratch));
+                    if (dn == (int)sizeof(scratch)) { memcpy(&latest_snap, &scratch, sizeof(latest_snap)); have_snapshot = 1; last_snapshot_ms = now_ms(); }
+                }
             } else if (hdr.type == PC_PACKET_SNAPSHOT && (size_t)n >= sizeof(PcSnapshotPacket)) {
                 memcpy(&latest_snap, buf, sizeof(latest_snap));
                 have_snapshot = 1;
