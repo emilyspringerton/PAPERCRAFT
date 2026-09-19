@@ -1123,6 +1123,22 @@ int main(int argc, char **argv) {
                 }
 
                 PlayerSlot *s = &g_slots[slot_idx];
+                /* One live client per identity (2026-09-19): several windows on the same account each re-sent CONNECT and stole the slot from
+                   each other, so nobody kept input or snapshots ("stuck"). A CONNECT from a DIFFERENT address while the slot's current address is
+                   still sending input (last 3s) is a second window: refuse it, visibly. If the current address has gone quiet (crash, relaunch,
+                   or a cellular NAT port change) the new address takes over, which is exactly the re-hello healing path. */
+                if (s->active && s->has_player_id &&
+                    (s->addr.sin_addr.s_addr != from.sin_addr.s_addr || s->addr.sin_port != from.sin_port) &&
+                    now_ms() - s->last_usercmd_ms < 3000) {
+                    static unsigned int last_dup_log_ms = 0;
+                    if (now_ms() - last_dup_log_ms > 5000) {
+                        printf("[net] CONNECT from %s:%d refused: slot %d is live on %s:%d (another window on this account)\n", inet_ntoa(from.sin_addr),
+                               ntohs(from.sin_port), slot_idx, inet_ntoa(s->addr.sin_addr), ntohs(s->addr.sin_port));
+                        last_dup_log_ms = now_ms();
+                    }
+                    send_reject(sock, &from, from_len, "This account is already connected from another window or device. Close it first.");
+                    continue;
+                }
                 if (!s->active) {
                     /* Real player_id must land on the slot BEFORE spawn_player runs -- spawn_player's
                        own real persistence lookup (packages/common/papercraft_persist.h) keys off
