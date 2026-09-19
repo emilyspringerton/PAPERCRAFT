@@ -197,6 +197,7 @@ static void spawn_falling_fragment(int object_idx, int fragment_idx) {
 typedef struct {
     int active;
     int lz4; /* client advertised PC_CAP_LZ4 on its latest CONNECT */
+    unsigned int usercmds_rx, snaps_tx; /* per-window telemetry, reset each [net] report */
     PcPlayerState state;
     struct sockaddr_in addr;
     socklen_t addr_len;
@@ -1167,12 +1168,15 @@ int main(int argc, char **argv) {
             } else if (hdr.type == PC_PACKET_USERCMD && (size_t)n >= sizeof(PcUserCmdPacket)) {
                 /* Real per-slot dispatch by reply address -- same convention
                    WEAKNIGHT_BEDROCK_RACERS' own server uses for its own human slot 0. */
+                int usercmd_matched = 0;
                 for (int i = 0; i < PC_MAX_PLAYERS; i++) {
                     PlayerSlot *s = &g_slots[i];
                     if (!s->active || s->addr.sin_addr.s_addr != from.sin_addr.s_addr ||
                         s->addr.sin_port != from.sin_port) {
                         continue;
                     }
+                    usercmd_matched = 1;
+                    s->usercmds_rx++;
                     PcUserCmdPacket cmd;
                     memcpy(&cmd, buf, sizeof(cmd));
                     if (cmd.cmd_sequence >= s->latest_cmd_seq) {
@@ -1185,6 +1189,25 @@ int main(int argc, char **argv) {
                         s->latest_cmd_time_ms = cmd.cmd_time_ms;
                     }
                     break;
+                }
+                if (!usercmd_matched) {
+                    /* Diagnostic (2026-09-19, mobile player frozen at spawn, client saw no snapshots): movement from an address that
+                       matches no slot is silently dropped. On cellular links the NAT can change the source PORT mid-session; then the
+                       server keeps sending snapshots to the old port while ignoring the new one. Log it (rate-limited) so this is provable. */
+                    static unsigned int last_unmatched_log_ms = 0; static unsigned int unmatched_since_log = 0;
+                    unmatched_since_log++;
+                    unsigned int t_ms = now_ms();
+                    if (t_ms - last_unmatched_log_ms > 5000) {
+                        int same_ip_slot = -1;
+                        for (int i = 0; i < PC_MAX_PLAYERS; i++)
+                            if (g_slots[i].active && g_slots[i].addr.sin_addr.s_addr == from.sin_addr.s_addr) { same_ip_slot = i; break; }
+                        if (same_ip_slot >= 0)
+                            printf("[net] %u USERCMD(s) ignored from %s:%d -- slot %d is on that IP but port %d: NAT port change; waiting for the client's re-hello\n",
+                                   unmatched_since_log, inet_ntoa(from.sin_addr), ntohs(from.sin_port), same_ip_slot, ntohs(g_slots[same_ip_slot].addr.sin_port));
+                        else
+                            printf("[net] %u USERCMD(s) ignored from %s:%d -- no slot with that IP\n", unmatched_since_log, inet_ntoa(from.sin_addr), ntohs(from.sin_port));
+                        last_unmatched_log_ms = t_ms; unmatched_since_log = 0;
+                    }
                 }
             } else if (hdr.type == PC_PACKET_ALLOCATE_TALENT && (size_t)n >= sizeof(PcAllocateTalentPacket)) {
                 /* Real "mods first everything" gameplay: the actual gate decision (is this a
@@ -1686,6 +1709,7 @@ int main(int argc, char **argv) {
                    PcSnapshotPacket::echo_cmd_time_ms's own doc comment for why this is a single
                    reused field, not a real per-player array. */
                 snap.echo_cmd_time_ms = g_slots[i].latest_cmd_time_ms;
+                g_slots[i].snaps_tx++;
                 if (g_slots[i].lz4) {
                     unsigned char wire[sizeof(PcSnapshotLz4Header) + sizeof(PcSnapshotPacket)];
                     int cn = lz4m_compress((const unsigned char *)&snap, (int)sizeof(snap), wire + sizeof(PcSnapshotLz4Header), (int)sizeof(PcSnapshotPacket));
@@ -1702,6 +1726,14 @@ int main(int argc, char **argv) {
             }
             }
 
+            if (server_tick % (PC_TICK_HZ * 10) == 0) {
+                for (int i = 0; i < PC_MAX_PLAYERS; i++) {
+                    if (!g_slots[i].active) continue;
+                    printf("[net] slot %d %s:%d lz4=%d usercmds_rx=%u snaps_tx=%u cmd_age_ms=%u (last 10s)\n", i, inet_ntoa(g_slots[i].addr.sin_addr),
+                           ntohs(g_slots[i].addr.sin_port), g_slots[i].lz4, g_slots[i].usercmds_rx, g_slots[i].snaps_tx, now_ms() - g_slots[i].last_usercmd_ms);
+                    g_slots[i].usercmds_rx = 0; g_slots[i].snaps_tx = 0;
+                }
+            }
             if (server_tick % (PC_TICK_HZ * 2) == 0 && g_slots[0].active) {
                 printf("tick=%u player0=(%.2f,%.2f,%.2f)\n", server_tick,
                        g_slots[0].state.x, g_slots[0].state.y, g_slots[0].state.z);

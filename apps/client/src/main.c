@@ -212,6 +212,13 @@ typedef struct {
 
 /* CONNECT = PcConnectPacket + one capability byte (PC_CAP_LZ4 unless --no-lz4). Old servers ignore the extra byte. */
 static int g_client_lz4 = 1;
+/* [net] telemetry (2026-09-19): what the network is actually doing, printed every 5s so a bad session can be diagnosed from a log. */
+static unsigned int g_net_snaps, g_net_lz, g_net_bytes, g_net_maxgap, g_net_prev_ms, g_net_soft_rehellos, g_net_last_report_ms;
+static void net_note_snapshot(size_t bytes, int lz, unsigned int now) {
+    g_net_snaps++; g_net_lz += (unsigned)lz; g_net_bytes += (unsigned)bytes;
+    if (g_net_prev_ms && now - g_net_prev_ms > g_net_maxgap) g_net_maxgap = now - g_net_prev_ms;
+    g_net_prev_ms = now;
+}
 static void send_connect_packet(int sock, const PcConnectPacket *cp, const struct sockaddr_in *to) {
     unsigned char wire[sizeof(PcConnectPacket) + 1];
     memcpy(wire, cp, sizeof(*cp));
@@ -1316,6 +1323,7 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[ai], "--stale-seconds") == 0) { int v = atoi(argv[ai + 1]); if (v >= 5 && v <= 300) stale_ms = (unsigned int)v * 1000u; }
     }
     for (int ai = 1; ai < argc; ai++) if (strcmp(argv[ai], "--no-lz4") == 0) g_client_lz4 = 0;
+    unsigned int last_soft_rehello_ms = 0, last_ticket_mint_ms = now_ms();
     int reconnecting = 0;
     int ever_welcomed = 0;
     /* Real, live bug found and fixed (2026-09-02, founder real-time: "at some point i just get
@@ -1531,12 +1539,13 @@ int main(int argc, char **argv) {
                 if (lh.raw_len == sizeof(PcSnapshotPacket) && (size_t)lh.comp_len <= (size_t)n - sizeof(lh)) {
                     PcSnapshotPacket scratch; /* never decode into latest_snap directly: a corrupt packet must not leave it half-written */
                     int dn = lz4m_decompress((const unsigned char *)buf + sizeof(lh), lh.comp_len, (unsigned char *)&scratch, (int)sizeof(scratch));
-                    if (dn == (int)sizeof(scratch)) { memcpy(&latest_snap, &scratch, sizeof(latest_snap)); have_snapshot = 1; last_snapshot_ms = now_ms(); }
+                    if (dn == (int)sizeof(scratch)) { memcpy(&latest_snap, &scratch, sizeof(latest_snap)); have_snapshot = 1; last_snapshot_ms = now_ms(); net_note_snapshot((size_t)n, 1, last_snapshot_ms); }
                 }
             } else if (hdr.type == PC_PACKET_SNAPSHOT && (size_t)n >= sizeof(PcSnapshotPacket)) {
                 memcpy(&latest_snap, buf, sizeof(latest_snap));
                 have_snapshot = 1;
                 last_snapshot_ms = now_ms();
+                net_note_snapshot((size_t)n, 0, last_snapshot_ms);
             } else if (hdr.type == PC_PACKET_PHONE_MESSAGE && (size_t)n >= sizeof(PcPhoneMessagePacket)) {
                 PcPhoneMessagePacket pm; memcpy(&pm, buf, sizeof(pm));
                 phone_msg_id = pm.message_id;
@@ -1562,6 +1571,26 @@ int main(int argc, char **argv) {
                 g_weapons_owned = wu.weapons_owned;
                 g_current_weapon = wu.current_weapon;
             }
+        }
+
+        /* Soft re-hello: if snapshots go quiet for 4s while we still think we are connected, re-send CONNECT every 2s. A mobile NAT can
+           change our source port mid-session; the server then ignores our movement and streams to the dead port. CONNECT with a still-valid
+           ticket reclaims our slot and updates the server's address for us (existing server behaviour), healing it in seconds with no
+           full-screen reconnect. A fresh ticket is minted while healthy (every ~2.5 min) so the ticket in hand is always valid. */
+        if (welcomed && now - last_snapshot_ms > 4000 && now - last_soft_rehello_ms >= 2000) {
+            send_connect_packet(sock, &connect_pkt, &server_addr);
+            last_soft_rehello_ms = now; g_net_soft_rehellos++;
+        }
+        if (welcomed && now - last_snapshot_ms < 1500 && now - last_ticket_mint_ms > 150000) {
+            char mint_err[128] = "";
+            if (pc_mint_ticket(iduna_host, iduna_port, ticket, mint_err, sizeof(mint_err))) memcpy(connect_pkt.ticket, ticket, PC_TICKET_TOTAL_LEN);
+            else fprintf(stderr, "[net] background ticket refresh failed: %s\n", mint_err);
+            last_ticket_mint_ms = now;
+        }
+        if (welcomed && now - g_net_last_report_ms >= 5000) {
+            if (g_net_last_report_ms) fprintf(stderr, "[net] 5s: snapshots=%u (lz4=%u) avg=%uB maxgap=%ums silence=%ums soft_rehellos=%u\n", g_net_snaps, g_net_lz,
+                                              g_net_snaps ? g_net_bytes / g_net_snaps : 0, g_net_maxgap, now - last_snapshot_ms, g_net_soft_rehellos);
+            g_net_last_report_ms = now; g_net_snaps = g_net_lz = g_net_bytes = g_net_maxgap = 0;
         }
 
         /* Real connection-loss detection -- once welcomed, if PC_CLIENT_STALE_MS passes with no
