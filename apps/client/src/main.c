@@ -210,6 +210,36 @@ typedef struct {
     int  submitting;
 } LoginScreenState;
 
+/* ---- Background HTTP worker (2026-09-19). Ticket refresh / re-mint / JWT refresh used to run on the main thread. http_client's connect() and
+   DNS lookup have no timeout, so on a flaky mobile link one call could block the whole client for 20+ s: no movement packets, no reconnect
+   attempts, the RECONNECTING screen frozen ("it didnt come back"; server log: usercmds_rx fell to 0 for 50s while snapshots kept flowing).
+   One job at a time on a detached thread; the main loop only starts jobs and polls for the result, so it can never stall on the network. ---- */
+typedef struct {
+    int kind;                       /* 1 = mint ticket, 2 = refresh JWT */
+    char host[128]; int port;
+    unsigned char ticket[PC_TICKET_TOTAL_LEN];
+    char err[128]; int ok;
+    SDL_atomic_t state;             /* 0 idle, 1 running, 2 done (result waiting to be consumed) */
+} NetJob;
+static NetJob g_job;
+static int net_job_thread(void *arg) {
+    NetJob *j = (NetJob *)arg;
+    j->err[0] = 0;
+    j->ok = (j->kind == 1) ? pc_mint_ticket(j->host, j->port, j->ticket, j->err, sizeof(j->err))
+                            : pc_refresh_player_token(j->host, j->port, j->err, sizeof(j->err));
+    SDL_AtomicSet(&j->state, 2);
+    return 0;
+}
+static int net_job_start(int kind, const char *host, int port) {
+    if (SDL_AtomicGet(&g_job.state) != 0) return 0;
+    g_job.kind = kind; g_job.port = port; g_job.ok = 0; snprintf(g_job.host, sizeof(g_job.host), "%s", host);
+    SDL_AtomicSet(&g_job.state, 1);
+    SDL_Thread *t = SDL_CreateThread(net_job_thread, "netjob", &g_job);
+    if (!t) { SDL_AtomicSet(&g_job.state, 0); return 0; }
+    SDL_DetachThread(t);
+    return 1;
+}
+
 /* CONNECT = PcConnectPacket + one capability byte (PC_CAP_LZ4 unless --no-lz4). Old servers ignore the extra byte. */
 static int g_client_lz4 = 1;
 /* [net] telemetry (2026-09-19): what the network is actually doing, printed every 5s so a bad session can be diagnosed from a log. */
@@ -1469,39 +1499,28 @@ int main(int argc, char **argv) {
            next reconnect.  A failed refresh is deliberately non-fatal: UDP gameplay continues
            with its already-authorized session, and the request is retried at a bounded cadence
            instead of auto-logging the player out or hammering IDUNA once per frame. */
-        if (now - last_token_refresh_ms >= PC_TOKEN_REFRESH_MS &&
-            now - last_token_refresh_attempt_ms >= PC_TOKEN_REFRESH_RETRY_MS) {
-            char refresh_err[128] = "";
-            last_token_refresh_attempt_ms = now;
-            if (pc_refresh_player_token(iduna_host, iduna_port, refresh_err, sizeof(refresh_err))) {
-                last_token_refresh_ms = now;
+        if (SDL_AtomicGet(&g_job.state) == 2) {   /* a background HTTP job finished: apply its result */
+            if (g_job.kind == 2) {
+                if (g_job.ok) last_token_refresh_ms = now; else fprintf(stderr, "LOGIN: token refresh deferred: %s\n", g_job.err);
             } else {
-                fprintf(stderr, "LOGIN: token refresh deferred: %s\n", refresh_err);
+                if (g_job.ok) { memcpy(connect_pkt.ticket, g_job.ticket, PC_TICKET_TOTAL_LEN); need_ticket_remint = 0; last_ticket_mint_ms = now;
+                                fprintf(stderr, "[net] minted a fresh ticket in the background.\n"); }
+                else fprintf(stderr, "[net] ticket mint failed, will retry: %s\n", g_job.err);
             }
+            SDL_AtomicSet(&g_job.state, 0);
+        }
+        if (now - last_token_refresh_ms >= PC_TOKEN_REFRESH_MS &&
+            now - last_token_refresh_attempt_ms >= PC_TOKEN_REFRESH_RETRY_MS && SDL_AtomicGet(&g_job.state) == 0) {
+            last_token_refresh_attempt_ms = now;
+            net_job_start(2, iduna_host, iduna_port);
         }
         if (!welcomed && !reject_reason[0] && now - last_connect_retry_ms >= 500) {
             int can_send = 1;
             if (need_ticket_remint) {
-                /* Blocking, same as the one real pc_mint_ticket call at startup -- fine here too:
-                   the disruptive "CONNECTION LOST" screen is already up for the whole duration of
-                   this reconnect attempt (see the render loop below), so a few hundred extra ms
-                   for a real HTTP round trip is invisible, not a new stall. On success this also
-                   exercises garyredg/codex's own real 401-refresh-and-retry logic inside
-                   pc_mint_ticket for the first time it can ever actually matter -- a still-valid-
-                   but-aging JWT gets rotated via /api/v1/auth/refresh; a genuinely expired one
-                   correctly falls through to the retry-until-it-mints behavior below instead
-                   (refresh cannot revive an expired token by IDUNA's own design -- see
-                   RefreshHandler's doc comment -- so failure here is expected, not a new bug). */
-                char remint_err[128] = "";
-                if (pc_mint_ticket(iduna_host, iduna_port, ticket, remint_err, sizeof(remint_err))) {
-                    memcpy(connect_pkt.ticket, ticket, PC_TICKET_TOTAL_LEN);
-                    need_ticket_remint = 0;
-                    fprintf(stderr, "Reconnect: minted a fresh ticket.\n");
-                } else {
-                    fprintf(stderr, "Reconnect: ticket re-mint failed, will retry: %s\n", remint_err);
-                    can_send = 0; /* never resend a known-stale ticket -- wait for a mint that
-                                     actually succeeds instead of spinning on a doomed CONNECT. */
-                }
+                /* Mint in the background (never block this loop on the network). Until a fresh ticket lands, keep retrying CONNECT with the
+                   current one as long as it is still inside its 5-minute life; never resend a known-expired ticket. */
+                net_job_start(1, iduna_host, iduna_port);
+                if (now - last_ticket_mint_ms >= 270000) can_send = 0;
             }
             if (can_send) {
                 send_connect_packet(sock, &connect_pkt, &server_addr);
@@ -1581,11 +1600,8 @@ int main(int argc, char **argv) {
             send_connect_packet(sock, &connect_pkt, &server_addr);
             last_soft_rehello_ms = now; g_net_soft_rehellos++;
         }
-        if (welcomed && now - last_snapshot_ms < 1500 && now - last_ticket_mint_ms > 150000) {
-            char mint_err[128] = "";
-            if (pc_mint_ticket(iduna_host, iduna_port, ticket, mint_err, sizeof(mint_err))) memcpy(connect_pkt.ticket, ticket, PC_TICKET_TOTAL_LEN);
-            else fprintf(stderr, "[net] background ticket refresh failed: %s\n", mint_err);
-            last_ticket_mint_ms = now;
+        if (welcomed && now - last_snapshot_ms < 1500 && now - last_ticket_mint_ms > 150000 && SDL_AtomicGet(&g_job.state) == 0) {
+            if (net_job_start(1, iduna_host, iduna_port)) last_ticket_mint_ms = now - 120000; /* retry in ~30s if it fails; success resets it */
         }
         if (welcomed && now - g_net_last_report_ms >= 5000) {
             if (g_net_last_report_ms) fprintf(stderr, "[net] 5s: snapshots=%u (lz4=%u) avg=%uB maxgap=%ums silence=%ums soft_rehellos=%u\n", g_net_snaps, g_net_lz,
