@@ -1290,16 +1290,21 @@ int main(int argc, char **argv) {
        bandwidth?") -- raised in lockstep with apps/server's own PC_PLAYER_TIMEOUT_MS bump
        (30000 -> 60000ms), keeping the same real, deliberate proportional safety margin between
        the two (15s here). */
-#define PC_CLIENT_WEAK_MS 3500 /* real, small additional bump (2026-08-30, founder real-time:
+#define PC_CLIENT_WEAK_MS_DEFAULT 12000 /* 2026-09-19, founder real-time on a phone modem: "the RECONNECTING screen ... flashes every 2-8 seconds can you please make it way more forgiving?" -- warning now waits 12s of silence (was 3.5s) and is sticky, see weak_shown below. Override: --weak-seconds N. Older history: real, small additional bump (2026-08-30, founder real-time:
     "papercraft is still flashing the reconnection message to me pretty frequently") -- real
     server-side snapshot rate just halved (PC_SNAPSHOT_HZ, apps/server/src/main.c's own doc
     comment) so the real, normal snapshot interval is now ~100ms, not ~50ms; 2000ms still gave
     huge real margin over that, this bump is about smoothing over brief, real network jitter
     without hiding a genuinely sustained problem (still under a tenth of PC_CLIENT_STALE_MS
     below). */
-#define PC_CLIENT_STALE_MS 45000
+#define PC_CLIENT_STALE_MS_DEFAULT 55000 /* was 45000; must stay under the server's PC_PLAYER_TIMEOUT_MS (60000). Override: --stale-seconds N */
 #define PC_PHONE_BANNER_MS 5000 /* real, fixed display window for draw_phone_notification */
     unsigned int last_snapshot_ms = 0;
+    unsigned int weak_ms = PC_CLIENT_WEAK_MS_DEFAULT, stale_ms = PC_CLIENT_STALE_MS_DEFAULT, weak_since_ms = 0; int weak_shown = 0;
+    for (int ai = 1; ai + 1 < argc; ai++) {
+        if (strcmp(argv[ai], "--weak-seconds") == 0) { int v = atoi(argv[ai + 1]); if (v >= 1 && v <= 300) weak_ms = (unsigned int)v * 1000u; }
+        else if (strcmp(argv[ai], "--stale-seconds") == 0) { int v = atoi(argv[ai + 1]); if (v >= 5 && v <= 300) stale_ms = (unsigned int)v * 1000u; }
+    }
     int reconnecting = 0;
     int ever_welcomed = 0;
     /* Real, live bug found and fixed (2026-09-02, founder real-time: "at some point i just get
@@ -1547,7 +1552,7 @@ int main(int argc, char **argv) {
            real reconnect-by-player_id logic already in apps/server's own CONNECT handler
            reclaims the same slot the moment a real CONNECT lands, as long as it's still within
            the server's own real PC_PLAYER_TIMEOUT_MS window. */
-        if (welcomed && now - last_snapshot_ms > PC_CLIENT_STALE_MS) {
+        if (welcomed && now - last_snapshot_ms > stale_ms) {
             unsigned int real_gap_ms = now - last_snapshot_ms; /* real, logged separately from the
                 configured threshold below -- a gap of 5001ms and a real gap of 40000ms both trip
                 this same real check, but they're very different real symptoms (borderline jitter
@@ -1561,7 +1566,7 @@ int main(int argc, char **argv) {
             last_connect_retry_ms = now - 500; /* real, immediate retry -- don't wait a further
                                                     500ms on top of the real staleness window
                                                     that already just elapsed. */
-            fprintf(stderr, "Real SNAPSHOT stream stopped for a real %ums (threshold %ums) -- reconnecting.\n", real_gap_ms, (unsigned int)PC_CLIENT_STALE_MS);
+            fprintf(stderr, "Real SNAPSHOT stream stopped for a real %ums (threshold %ums) -- reconnecting.\n", real_gap_ms, (unsigned int)stale_ms);
         }
 
         float move_x = 0.0f, move_z = 0.0f;
@@ -1811,8 +1816,14 @@ int main(int argc, char **argv) {
             }
             draw_weapon_hud(win_w, win_h, g_current_weapon, g_weapons_owned);
         }
-        if (welcomed && now - last_snapshot_ms > PC_CLIENT_WEAK_MS) {
-            draw_weak_connection_indicator(win_w, win_h, now - last_snapshot_ms);
+        /* Sticky warning: appears only after weak_ms of silence, then stays until snapshots clearly resume (gap < 1.5s) and it
+           has been up at least 4s, so bursty mobile links can't make it flash on and off. */
+        {
+            unsigned int gap = now - last_snapshot_ms;
+            if (!welcomed) weak_shown = 0;
+            else if (!weak_shown && gap > weak_ms) { weak_shown = 1; weak_since_ms = now; }
+            else if (weak_shown && gap < 1500 && now - weak_since_ms > 4000) weak_shown = 0;
+            if (weak_shown) draw_weak_connection_indicator(win_w, win_h, gap);
         }
         if (phone_msg_id != 0) {
             if (now - phone_msg_shown_ms > PC_PHONE_BANNER_MS) {
